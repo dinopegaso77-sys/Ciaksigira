@@ -1,63 +1,17 @@
 /* Regista AI — generatore di clip video via RunPod Public Endpoints */
 'use strict';
-const APP_VERSION = '1.6'; // deve coincidere con ?v= in index.html
+const APP_VERSION = '1.8'; // deve coincidere con ?v= in index.html
 
 const API = 'https://api.runpod.ai/v2';
 const $ = s => document.querySelector(s);
 const $$ = s => [...document.querySelectorAll(s)];
 const money = n => (Math.round(n * 100) / 100).toFixed(2).replace('.', ',') + ' $';
 
-/* ---------- modelli ---------- */
-const MODELS = {
-  wan: {
-    name: 'Wan 2.6', desc: 'Economico e con audio: ideale per prove e bozze', neg: true, audio: false,
-    ratios: ['16:9', '9:16'], durations: [5, 10, 15], res: ['720p', '1080p'], defRes: '720p',
-    hint: 'La foto di partenza diventa il primo fotogramma.',
-    endpoint: o => o.startImg ? 'wan-2-6-i2v' : 'wan-2-6-t2v',
-    price: o => (o.res === '1080p' ? 0.15 : 0.10) * o.duration,
-    input(o) {
-      const sizes = { '16:9': { '720p': '1280*720', '1080p': '1920*1080' }, '9:16': { '720p': '720*1280', '1080p': '1080*1920' } };
-      const ratio = o.startImg ? '16:9' : o.ratio; // i2v solo orizzontale
-      const inp = { prompt: o.prompt, duration: o.duration, shot_type: 'single', seed: -1, enable_prompt_expansion: false };
-      if (o.startImg) { inp.resolution = o.res; inp.size = o.res; } // immagine→video: RunPod gira 'size' al campo 'resolution', che vuole "720p" / "1080p"
-      else inp.size = sizes[ratio][o.res];           // testo→video: vuole "1280*720" ecc.
-      if (o.negative) inp.negative_prompt = o.negative;
-      if (o.startImg) inp.image = o.startImg;
-      return inp;
-    }
-  },
-  seedance: {
-    name: 'Seedance 2.5', desc: 'Qualità massima, con audio incluso', neg: false, audio: true,
-    ratios: ['16:9', '9:16', '21:9', '1:1', '4:3', '3:4'], durations: [4, 5, 6, 8, 10, 12, 15, 20, 30],
-    res: ['480p', '720p', '1080p', '4k'], defRes: '1080p',
-    hint: 'I personaggi scelti fanno da riferimento per i volti.',
-    endpoint: o => o.startImg ? '16jsvx5ncmm24x' : 'tdq07exynr7zux',
-    price: o => ({ '480p': 0.18, '720p': 0.36, '1080p': 0.90, '4k': 1.80 })[o.res] * o.duration,
-    input(o) {
-      const inp = { prompt: o.prompt, duration: o.duration, resolution: o.res, aspect_ratio: o.ratio, generate_audio: o.audio, seed: -1 };
-      if (o.startImg) inp.image = o.startImg;
-      else if (o.charImgs.length) inp.reference_images = o.charImgs.slice(0, 9);
-      return inp;
-    }
-  },
-  kling: {
-    name: 'Kling O1', desc: 'Segue il movimento di un tuo ciak e ci mette i tuoi personaggi (video muto)', neg: true, audio: false, needsVideo: true,
-    ratios: ['16:9', '9:16', '1:1'], durations: [3, 4, 5, 6, 7, 8, 9, 10], res: [], defRes: null,
-    hint: 'Scegli i personaggi (o una foto) e un ciak di riferimento.',
-    endpoint: () => 'kling-video-o1-r2v',
-    price: o => 0.112 * o.duration,
-    input(o) {
-      const images = [...(o.startImg ? [o.startImg] : []), ...o.charImgs].slice(0, 10);
-      const inp = { prompt: o.prompt, images, video: o.refVideo, aspect_ratio: o.ratio, duration: o.duration, seed: -1, enable_prompt_expansion: false };
-      if (o.negative) inp.negative_prompt = o.negative;
-      return inp;
-    }
-  }
-};
+/* i modelli sono in models.js */
 
 /* ---------- stato ---------- */
 const S = {
-  engine: 'wan', startImg: null, selChars: new Set(), chars: [], clips: [],
+  engine: 'wan', startImg: null, audioIn: null, audioName: '', selChars: new Set(), chars: [], clips: [],
   filter: 'all', cmp: [], jobs: JSON.parse(ls('jobs') || '[]')
 };
 function ls(k, v) {
@@ -223,50 +177,113 @@ function fillSelect(sel, values, labelFn, keep) {
   if (values.map(String).includes(String(old))) sel.value = old;
 }
 function setEngine(e, keepVals) {
-  S.engine = e; const m = MODELS[e];
-  $$('#engine button').forEach(b => b.classList.toggle('active', b.dataset.v === e));
-  $('#engDesc').innerHTML = `<b>${m.name}</b> · ${m.desc}`;
-  const lab = {};
-  fillSelect($('#ratio'), m.ratios, v => lab[v] || v, keepVals?.ratio);
-  fillSelect($('#duration'), m.durations, v => v + ' sec', keepVals?.duration ?? (m.durations.includes(5) ? 5 : m.durations[0]));
+  if (!MODELS[e]) e = 'wan';
+  S.engine = e; ls('engine', e); const m = MODELS[e];
+  $('#modelBtn').innerHTML = `<span class="mb-name">${m.name}</span><span class="mb-price">${m.priceLabel}</span>
+    <span class="mb-desc">${m.desc}</span><span class="mb-badges">${modelBadges(m).map(b => `<i>${b}</i>`).join('')}</span><span class="mb-change">Cambia ▸</span>`;
+  $('#ratioWrap').classList.toggle('hidden', !m.ratios);
+  if (m.ratios) fillSelect($('#ratio'), m.ratios, v => v, keepVals?.ratio);
+  $('#durWrap').classList.toggle('hidden', !m.durations.length);
+  if (m.durations.length) fillSelect($('#duration'), m.durations, v => v + ' sec', keepVals?.duration ?? (m.durations.includes(5) ? 5 : m.durations[0]));
   $('#resWrap').classList.toggle('hidden', !m.res.length);
   if (m.res.length) fillSelect($('#res'), m.res, v => v === '4k' ? '4K' : v, keepVals?.res ?? m.defRes);
-  $('#audioWrap').classList.toggle('hidden', !m.audio);
+  const shown = [m.ratios, m.durations.length, m.res.length].filter(Boolean).length;
+  $('#optRow').classList.toggle('hidden', !shown);
+  $('#audioWrap').classList.toggle('hidden', m.audioOut !== 'toggle');
   $('#negWrap').classList.toggle('hidden', !m.neg);
   $('#refHint').textContent = m.hint;
-  $('#refVidWrap').classList.toggle('hidden', !m.needsVideo);
-  $('#klAudioWrap').classList.toggle('hidden', !m.needsVideo);
-  if (m.needsVideo) fillRefVideos(keepVals?.refVideoId);
+  $('#refVidWrap').classList.toggle('hidden', !m.needs.video);
+  $('#klAudioWrap').classList.toggle('hidden', e !== 'kling');
+  if (m.needs.video) fillRefVideos(keepVals?.refVideoId);
+  $('#audioInWrap').classList.toggle('hidden', !m.needs.audio);
+  renderExtras(m, keepVals?.ex);
   updateCost();
+}
+function renderExtras(m, keep = {}) {
+  const box = $('#extras');
+  box.innerHTML = (m.extras || []).map(x => {
+    const v = keep && x.id in keep ? keep[x.id] : x.def;
+    if (x.type === 'check') return `<label class="check"><input type="checkbox" data-ex="${x.id}" ${v ? 'checked' : ''}> ${x.label}</label>`;
+    return `<label>${x.label}<select data-ex="${x.id}">${x.options.map(([k, l]) => `<option value="${k}" ${k === v ? 'selected' : ''}>${l}</option>`).join('')}</select></label>`;
+  }).join('');
+  box.classList.toggle('hidden', !(m.extras || []).length);
+  box.querySelectorAll('[data-ex]').forEach(el => el.onchange = updateCost);
+}
+function readExtras() {
+  const ex = {};
+  $$('#extras [data-ex]').forEach(el => { ex[el.dataset.ex] = el.type === 'checkbox' ? el.checked : el.value; });
+  return ex;
+}
+
+/* finestra di scelta del modello */
+function renderModelPicker() {
+  $('#modelList').innerHTML = GROUPS.map(g => {
+    const ms = Object.entries(MODELS).filter(([, m]) => m.group === g);
+    return `<h3 class="mgroup">${g}</h3><div class="mcards">${ms.map(([k, m]) => `
+      <button class="mcard ${k === S.engine ? 'on' : ''}" data-model="${k}">
+        <span class="mc-top"><b>${m.name}</b>${m.tag ? `<em>${m.tag}</em>` : ''}</span>
+        <span class="mc-price">${m.priceLabel}</span>
+        <span class="mc-desc">${m.desc}</span>
+        <span class="mb-badges">${modelBadges(m).map(b => `<i>${b}</i>`).join('')}</span>
+      </button>`).join('')}</div>`;
+  }).join('');
+  $$('#modelList [data-model]').forEach(b => b.onclick = () => { setEngine(b.dataset.model); closeM($('#mModels')); });
+}
+$('#modelBtn').onclick = () => { renderModelPicker(); openM('mModels'); };
+
+/* file audio (InfiniteTalk) */
+$('#audioInFile').onchange = e => {
+  const f = e.target.files[0]; e.target.value = ''; if (!f) return;
+  if (f.size > 6 * 1024 * 1024) return toast('Audio troppo pesante (max 6 MB): usa un MP3 più corto');
+  const r = new FileReader();
+  r.onload = () => {
+    S.audioIn = r.result; S.audioName = f.name; S.audioDur = 0; showAudioIn();
+    const au = new Audio(r.result); au.onloadedmetadata = () => { S.audioDur = Math.round(au.duration) || 0; };
+  };
+  r.readAsDataURL(f);
+};
+$('#audioInClear').onclick = () => { S.audioIn = null; S.audioName = ''; showAudioIn(); };
+function showAudioIn() {
+  $('#audioInName').textContent = S.audioIn ? '♪ ' + S.audioName : 'Nessun audio';
+  $('#audioInClear').classList.toggle('hidden', !S.audioIn);
 }
 function fillRefVideos(keep) {
   const sel = $('#refVideo'), old = keep ?? sel.value;
-  sel.innerHTML = S.clips.length
-    ? '<option value="">— scegli un ciak —</option>' + S.clips.map(c => `<option value="${c.id}">Ciak ${c.take || '–'} · ${esc(c.settings.prompt).slice(0, 40)}</option>`).join('')
-    : '<option value="">Prima gira un ciak con Wan o Seedance</option>';
-  if (S.clips.some(c => c.id === old)) sel.value = old;
+  const libVids = (typeof LIB !== 'undefined' && r2On()) ? LIB.items.filter(i => i.kind === 'video') : [];
+  sel.innerHTML = (S.clips.length || libVids.length)
+    ? '<option value="">— scegli un video —</option>'
+      + (S.clips.length ? '<optgroup label="Ciak generati">' + S.clips.map(c => `<option value="${c.id}">Ciak ${c.take || '–'} · ${esc(c.settings.prompt).slice(0, 40)}</option>`).join('') + '</optgroup>' : '')
+      + (libVids.length ? '<optgroup label="I miei video">' + libVids.map(i => `<option value="lib:${esc(i.key)}">${esc(i.name).slice(0, 48)}</option>`).join('') + '</optgroup>' : '')
+    : '<option value="">Prima gira un ciak o carica un tuo video</option>';
+  if (old && [...sel.options].some(op => op.value === old)) sel.value = old;
 }
 async function videoSource(c) {
   if (c.url && Date.now() - c.created < 6.5 * 864e5) return c.url;
+  if (c.r2key && r2On()) return await libUrl(c.r2key);
   if (c.blob && c.blob.size < 7 * 1024 * 1024) return await new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(r.result); r.onerror = rej; r.readAsDataURL(c.blob); });
   throw new Error(`Il ciak ${c.take || ''} è troppo vecchio o pesante: scegline uno più recente`);
 }
-$$('#engine button').forEach(b => b.onclick = () => setEngine(b.dataset.v));
-['#ratio', '#duration', '#res'].forEach(s => $(s).onchange = updateCost);
+['#ratio', '#duration', '#res', '#refVideo', '#audio'].forEach(s => $(s).addEventListener('change', updateCost));
 
 function currentOpts() {
   const m = MODELS[S.engine];
   const chars = S.chars.filter(c => S.selChars.has(c.id));
   let prompt = $('#prompt').value.trim();
   if (chars.length) prompt += '\n' + chars.map(c => `${c.name}: ${c.desc}`.trim()).join('. ');
+  const refVideoId = m.needs.video ? $('#refVideo').value : '';
+  const refClip = refVideoId && (S.clips.find(c => c.id === refVideoId) || (window.libClip && libClip(refVideoId)));
   return {
     engine: S.engine, prompt, rawPrompt: $('#prompt').value.trim(),
     negative: m.neg ? $('#negative').value.trim() : '',
-    ratio: $('#ratio').value, duration: +$('#duration').value,
-    res: m.res.length ? $('#res').value : '720p', audio: $('#audio').checked,
+    ratio: m.ratios ? $('#ratio').value : '16:9',
+    duration: m.durations.length ? +$('#duration').value : 0,
+    res: m.res.length ? $('#res').value : (m.defRes || '720p'),
+    audio: $('#audio').checked, ex: readExtras(),
     startImg: S.startImg, charImgs: chars.map(c => c.img), charIds: chars.map(c => c.id),
-    refVideoId: m.needsVideo ? $('#refVideo').value : '',
-    klAudio: !!m.needsVideo && $('#klAudio').checked
+    img: S.startImg || (chars[0] && chars[0].img) || null,   // per i modelli che vogliono per forza una foto
+    audioIn: S.audioIn,
+    refVideoId, refDuration: refClip ? refClip.settings.duration : 0,
+    klAudio: S.engine === 'kling' && $('#klAudio').checked
   };
 }
 function updateCost() {
@@ -302,11 +319,18 @@ $('#goBtn').onclick = async () => {
   if (!key()) { toast('Collega prima RunPod'); openSettings(); return; }
   const o = currentOpts(); const m = MODELS[o.engine];
   if (!o.rawPrompt) { toast('Scrivi la descrizione della scena'); $('#prompt').focus(); return; }
-  if (o.engine === 'kling' && !o.startImg && !o.charImgs.length) { toast('Kling vuole almeno un personaggio o una foto'); return; }
-  if (m.needsVideo) {
-    const rc = S.clips.find(c => c.id === o.refVideoId);
-    if (!rc) { toast('Scegli il ciak di riferimento per Kling'); $('#refVideo').focus(); return; }
-    try { o.refVideo = await videoSource(rc); } catch (e) { toast(e.message, 5000); return; }
+  if (m.needs.image === 'req' && !o.img) { toast(`${m.name} vuole una foto: caricala o scegli un personaggio`); return; }
+  if (m.needs.chars && !o.startImg && !o.charImgs.length) { toast(`${m.name} vuole almeno un personaggio o una foto`); return; }
+  if (m.needs.audio && !o.audioIn) { toast(`${m.name} vuole un file audio`); return; }
+  if (m.needs.video) {
+    const rc = S.clips.find(c => c.id === o.refVideoId) || libClip(o.refVideoId);
+    if (!rc) { toast('Scegli il ciak di riferimento'); $('#refVideo').focus(); return; }
+    try { o.refVideo = rc.lib ? await libUrl(rc.key) : await videoSource(rc); } catch (e) { toast(e.message, 5000); return; }
+  }
+  if (r2On()) {
+    $('#goBtn').textContent = 'Preparo i file…';
+    try { await prepareModelInputs(o); } catch (e) { toast('Archivio non raggiungibile, uso le foto dal telefono'); }
+    $('#goBtn').textContent = GO_LABEL;
   }
   const est = m.price(o);
   if (est >= 3 && !confirm(`Questa clip costa circa ${money(est)}. Procedo?`)) return;
@@ -319,7 +343,7 @@ $('#goBtn').onclick = async () => {
     const take = nextTake(); ls('take', String(take)); showTake();
     const job = {
       id: uid(), jobId: r.id, endpoint, status: r.status || 'IN_QUEUE', created: Date.now(), est, take,
-      settings: { engine: o.engine, prompt: o.rawPrompt, negative: o.negative, ratio: o.ratio, duration: o.duration, res: o.res, audio: o.audio, charIds: o.charIds, refVideoId: o.refVideoId, klAudio: o.klAudio },
+      settings: { engine: o.engine, prompt: o.rawPrompt, negative: o.negative, ratio: o.ratio, duration: o.duration || o.refDuration || (m.needs.audio ? S.audioDur : 0) || 5, res: o.res, audio: o.audio, charIds: o.charIds, refVideoId: o.refVideoId, klAudio: o.klAudio, ex: o.ex },
       fullPrompt: o.prompt, input
     };
     S.jobs.unshift(job); saveJobs(); renderJobs(); poll(job);
@@ -411,12 +435,12 @@ const stripPrefix = v => typeof v === 'string' && v.startsWith('data:') ? v.slic
 async function retryWithRawImages(job, err) {
   const inp = job.input;
   if (!inp || job.rawTried) return false;
-  const keys = ['image', 'images', 'reference_images', 'video'].filter(k => {
+  const keys = ['image', 'images', 'reference_images', 'video', 'audio'].filter(k => {
     const v = inp[k]; return Array.isArray(v) ? v.some(x => String(x).startsWith('data:')) : String(v || '').startsWith('data:');
   });
   if (!keys.length) return false;
   const s = typeof err === 'string' ? err : JSON.stringify(err || '');
-  if (!/image|img_|base64|data ?uri/i.test(s)) return false; // solo errori che riguardano la foto
+  if (!/image|img_|audio|base64|data ?uri/i.test(s)) return false; // solo errori che riguardano la foto
   job.rawTried = true;
   const inp2 = { ...inp };
   keys.forEach(k => { inp2[k] = Array.isArray(inp[k]) ? inp[k].map(stripPrefix) : stripPrefix(inp[k]); });
@@ -474,7 +498,8 @@ async function saveClip(job, url, cost, muxed) {
   const clip = { id: job.id, take: job.take, url, blob, created: Date.now(), cost: typeof cost === 'number' ? cost : job.est, settings: job.settings, fullPrompt: job.fullPrompt, fav: false, audioFrom: muxed ? muxed.audioFrom : null };
   await dbPut('clips', clip);
   S.clips.unshift(clip);
-  if (MODELS[S.engine].needsVideo) fillRefVideos();
+  backupClip(clip, muxed ? muxed.blob : null); // copia nell'archivio R2, se attivo
+  if (MODELS[S.engine].needs.video) fillRefVideos();
   ls('spent', String((parseFloat(ls('spent')) || 0) + clip.cost)); showSpent();
 }
 
@@ -487,6 +512,7 @@ function clipSrc(c) {
 }
 const expired = c => !c.blob && Date.now() - c.created > 7 * 864e5;
 function renderGallery() {
+  renderGalFilter();
   const list = S.clips.filter(c => S.filter === 'all' || (S.filter === 'fav' ? c.fav : c.settings.engine === S.filter));
   const box = $('#gallery');
   if (!list.length) box.innerHTML = `<div class="empty">${S.clips.length ? 'Nessuna clip con questo filtro.' : 'Ancora nessun ciak.<br>Vai su "Crea" e gira la prima scena.'}</div>`;
@@ -517,7 +543,13 @@ function renderGallery() {
   });
   $('#cmpBtn').textContent = `⇆ Confronta (${S.cmp.length}/2)`; $('#cmpBtn').disabled = S.cmp.length !== 2;
 }
-$$('#galFilter .chip').forEach(b => b.onclick = () => { S.filter = b.dataset.v; $$('#galFilter .chip').forEach(x => x.classList.toggle('active', x === b)); renderGallery(); });
+function renderGalFilter() {
+  const used = [...new Set(S.clips.map(c => c.settings.engine))].filter(k => MODELS[k]);
+  if (S.filter !== 'all' && S.filter !== 'fav' && !used.includes(S.filter)) S.filter = 'all';
+  const chips = [['all', 'Tutte'], ['fav', '★ Preferite'], ...used.map(k => [k, MODELS[k].name])];
+  $('#galFilter').innerHTML = chips.map(([v, l]) => `<button class="chip ${S.filter === v ? 'active' : ''}" data-v="${v}">${l}</button>`).join('');
+  $$('#galFilter .chip').forEach(b => b.onclick = () => { S.filter = b.dataset.v; renderGallery(); });
+}
 $('#cmpBtn').onclick = () => {
   const cs = S.cmp.map(id => S.clips.find(c => c.id === id)).filter(Boolean); if (cs.length !== 2) return;
   $('#compare').innerHTML = cs.map(c => `<div><video src="${clipSrc(c)}" controls playsinline loop></video><p>Ciak ${c.take || '–'} · ${MODELS[c.settings.engine].name} · ${c.settings.duration}s · ${money(c.cost)}</p></div>`).join('');
@@ -541,7 +573,7 @@ $('#vClose').onclick = () => closeM($('#viewer'));
 $('#vReuse').onclick = () => { loadSettings(viewing.settings); closeM($('#viewer')); go('crea'); toast('Impostazioni ricaricate'); };
 
 function loadSettings(s) {
-  setEngine(s.engine, { ratio: s.ratio, duration: s.duration, res: s.res, refVideoId: s.refVideoId });
+  setEngine(s.engine, { ratio: s.ratio, duration: s.duration, res: s.res, refVideoId: s.refVideoId, ex: s.ex });
   $('#prompt').value = s.prompt; if (s.negative) $('#negative').value = s.negative;
   $('#audio').checked = s.audio !== false;
   S.selChars = new Set((s.charIds || []).filter(id => S.chars.some(c => c.id === id)));
@@ -582,7 +614,7 @@ function keySummary() {
 function openSettings() {
   $('#setKey').value = key(); status('');
   $('#secKey').open = !key();
-  keySummary(); if (window.montSummary) montSummary(); $('#mSettings').classList.remove('hidden');
+  keySummary(); if (window.montSummary) montSummary(); if (window.r2Summary) r2Summary(); $('#mSettings').classList.remove('hidden');
 }
 $('#showKey').onclick = () => { const i = $('#setKey'); i.type = i.type === 'password' ? 'text' : 'password'; $('#showKey').textContent = i.type === 'password' ? 'Mostra' : 'Nascondi'; };
 async function storeKey() { S.apiKey = $('#setKey').value.trim(); await encryptKey(S.apiKey); keySummary(); }
@@ -620,8 +652,9 @@ $('#resetSpent').onclick = () => { if (confirm('Azzerare il contatore della spes
     S.chars = (await dbAll('chars')).sort((a, b) => a.created - b.created);
     S.clips = (await dbAll('clips')).sort((a, b) => b.created - a.created);
   } catch (e) { toast('Archivio del dispositivo non disponibile'); }
-  setEngine('wan'); renderRefChars(); renderChars(); renderJobs();
+  setEngine(ls('engine') || 'wan'); showAudioIn(); renderRefChars(); renderChars(); renderJobs();
   S.jobs.filter(j => !j.done && !BAD.includes(j.status)).forEach(poll);
   $('#prompt').oninput = updateCost;
   if (!key()) openSettings(); // primo avvio: subito al collegamento
+  else if (typeof r2On === 'function' && r2On() && montId()) libRefresh(true); // elenco dei miei file in sottofondo
 })();

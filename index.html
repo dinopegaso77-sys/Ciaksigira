@@ -8,7 +8,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Kalam:wght@400;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=1.6">
+<link rel="stylesheet" href="style.css?v=1.8">
 </head>
 <body>
 
@@ -64,23 +64,19 @@
           </div>
 
           <div class="field-label">Modello</div>
-          <div class="seg3" id="engine">
-            <button class="active" data-v="wan">Wan</button>
-            <button data-v="seedance">Seedance</button>
-            <button data-v="kling">Kling</button>
-          </div>
-          <p id="engDesc" class="engdesc"></p>
+          <button class="modelbtn" id="modelBtn" type="button"></button>
 
           <label>Descrizione della scena
             <textarea id="prompt" rows="4" placeholder="Es. Primo piano di una donna sotto la pioggia, luci al neon riflesse sull'asfalto, carrellata lenta in avanti, stile cinema 35mm"></textarea>
           </label>
 
-          <div class="row3">
-            <label>Formato<select id="ratio"></select></label>
-            <label>Durata<select id="duration"></select></label>
+          <div class="row3" id="optRow">
+            <label id="ratioWrap">Formato<select id="ratio"></select></label>
+            <label id="durWrap">Durata<select id="duration"></select></label>
             <label id="resWrap">Qualità<select id="res"></select></label>
           </div>
           <label class="check" id="audioWrap"><input type="checkbox" id="audio" checked> Genera audio (voci, rumori, musica)</label>
+          <div id="extras" class="extras hidden"></div>
 
           <div class="field-label">Personaggi e foto</div>
           <p class="refhint" id="refHint"></p>
@@ -89,6 +85,15 @@
             <label class="chipbtn">+ Foto di partenza<input type="file" id="refFile" accept="image/*"></label>
             <div id="refPreview" class="refpreview hidden"></div>
             <button class="link small hidden" id="refClear">Togli foto</button>
+          </div>
+
+          <div id="audioInWrap" class="hidden">
+            <div class="field-label">Voce o canzone</div>
+            <div class="refrow">
+              <label class="chipbtn">🎵 Scegli file audio<input type="file" id="audioInFile" accept="audio/*"></label>
+              <span id="audioInName" class="muted small">Nessun audio</span>
+              <button class="link small hidden" id="audioInClear">Togli</button>
+            </div>
           </div>
 
           <label id="refVidWrap" class="hidden">Ciak di riferimento (movimento)<select id="refVideo"></select></label>
@@ -123,14 +128,39 @@
       <h1 class="chalk">Galleria</h1>
       <button class="btn small" id="cmpBtn" disabled>⇆ Confronta (0/2)</button>
     </div>
-    <div class="chips" id="galFilter">
-      <button class="chip active" data-v="all">Tutte</button>
-      <button class="chip" data-v="fav">★ Preferite</button>
-      <button class="chip" data-v="wan">Wan</button>
-      <button class="chip" data-v="seedance">Seedance</button>
-      <button class="chip" data-v="kling">Kling</button>
+    <div class="seg2" id="galTabs">
+      <button class="active" data-g="ciak">🎬 Ciak</button>
+      <button data-g="file">📁 I miei file</button>
     </div>
-    <div id="gallery" class="gallery"></div>
+
+    <div id="galCiak">
+      <div class="chips" id="galFilter"></div>
+      <div id="gallery" class="gallery"></div>
+    </div>
+
+    <div id="galFiles" class="hidden">
+      <div id="libOff" class="slate"><div class="slate-body">
+        <h2 class="chalk">Archivio non collegato</h2>
+        <p class="muted">Per caricare i tuoi video, foto e registrazioni serve l'archivio Cloudflare R2 collegato al worker di montaggio. Si configura una volta sola.</p>
+        <button class="btn primary" id="libConnect">Collega l'archivio</button>
+      </div></div>
+      <div id="libOn" class="hidden">
+        <div class="libbar">
+          <label class="btn primary">⬆ Carica file<input type="file" id="libFile" accept="video/*,image/*,audio/*" multiple></label>
+          <button class="btn" id="recOpen">🎙 Registra voce</button>
+          <button class="btn" id="libReload" title="Aggiorna">⟳</button>
+        </div>
+        <div class="chips" id="libFilter">
+          <button class="chip active" data-v="all">Tutti</button>
+          <button class="chip" data-v="video">Video</button>
+          <button class="chip" data-v="image">Foto</button>
+          <button class="chip" data-v="audio">Audio</button>
+        </div>
+        <div id="upList" class="uplist"></div>
+        <p id="libStatus" class="muted small"></p>
+        <div id="libGrid" class="gallery"></div>
+      </div>
+    </div>
   </section>
 
   <!-- ===== PERSONAGGI ===== -->
@@ -244,6 +274,13 @@
       <p id="montStatus" class="status"></p>
     </details>
 
+    <details class="sec" id="secR2">
+      <summary><span>Archivio file (R2)</span><em id="sumR2">non attivo</em></summary>
+      <p class="muted small">Le chiavi R2 non si mettono qui: vanno nelle variabili dell'endpoint di montaggio su RunPod (vedi LEGGIMI). Qui controlli solo che il collegamento funzioni.</p>
+      <div class="actions"><button class="btn" id="testR2">Verifica archivio</button></div>
+      <p id="r2Status" class="status"></p>
+    </details>
+
     <details class="sec">
       <summary><span>Password e blocco</span><em>blocco dopo 30 min</em></summary>
       <label>Password attuale<input id="pwOld" type="password" autocomplete="current-password"></label>
@@ -262,7 +299,36 @@
     </details>
 
     <button class="btn big" id="lockNow">🔒 Blocca l'app</button>
-    <p class="muted small ver">Regista AI · versione <b id="appVer">1.6</b></p>
+    <p class="muted small ver">Regista AI · versione <b id="appVer">1.8</b></p>
+  </div>
+</div>
+
+<div class="modal hidden" id="mRec">
+  <div class="mbox">
+    <div class="mhead"><h2 class="chalk">Registra la voce</h2><button class="x" data-close>✕</button></div>
+    <div class="recbox">
+      <b id="recTime" class="rectime">0:00</b>
+      <button class="btn big recbtn" id="recBtn">● Registra</button>
+      <audio id="recPlay" class="hidden" controls></audio>
+      <label>Nome<input id="recName" type="text"></label>
+      <button class="btn primary big" id="recSave" disabled>Salva nell'archivio</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal hidden" id="mUse">
+  <div class="mbox">
+    <div class="mhead"><h2 class="chalk" id="useTitle">File</h2><button class="x" data-close>✕</button></div>
+    <div id="usePrev" class="useprev"></div>
+    <div id="useActs" class="useacts"></div>
+  </div>
+</div>
+
+<div class="modal hidden" id="mModels">
+  <div class="mbox wide">
+    <div class="mhead"><h2 class="chalk">Scegli il modello</h2><button class="x" data-close>✕</button></div>
+    <p class="muted small">Prezzi indicativi di RunPod; il costo reale di ogni ciak viene registrato in Spesa.</p>
+    <div id="modelList"></div>
   </div>
 </div>
 
@@ -317,13 +383,15 @@
 <div class="modal hidden" id="mPick">
   <div class="mbox wide">
     <div class="mhead"><h2 class="chalk">Scegli i ciak</h2><button class="x" data-close>✕</button></div>
-    <div id="pickGrid" class="gallery pick"></div>
+    <div id="pickGrid"></div>
     <button class="btn primary big" id="pickOk">Aggiungi alla timeline</button>
   </div>
 </div>
 
 <div id="toast" class="toast"></div>
-<script src="app.js?v=1.6"></script>
-<script src="montaggio.js?v=1.6"></script>
+<script src="models.js?v=1.8"></script>
+<script src="app.js?v=1.8"></script>
+<script src="montaggio.js?v=1.8"></script>
+<script src="libreria.js?v=1.8"></script>
 </body>
 </html>

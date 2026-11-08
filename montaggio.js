@@ -11,7 +11,9 @@ const montId = () => (ls('montEndpoint') || '').trim();
 function mtDefault() { return { title: '', items: [], trans: 'dissolve', end: true, keep: true, vol: 60 }; }
 function mtLoad() { try { MT.proj = Object.assign(mtDefault(), JSON.parse(ls('film') || '{}')); } catch (e) { MT.proj = mtDefault(); } }
 function mtSave() { ls('film', JSON.stringify(MT.proj)); }
-const mtClips = () => MT.proj.items.map(id => S.clips.find(c => c.id === id)).filter(Boolean);
+const mtClips = () => MT.proj.items.map(id => S.clips.find(c => c.id === id) || (window.libClip && libClip(id))).filter(Boolean);
+const thumbOf = c => c.kind === 'image' ? `<img src="${clipSrc(c)}" alt="">` : `<video src="${clipSrc(c)}#t=0.1" preload="metadata" muted playsinline></video>`;
+const labelOf = c => c.lib ? (c.kind === 'image' ? 'Foto' : 'Mio video') : `Ciak ${c.take || '–'}`;
 const fmtTime = s => { s = Math.max(0, Math.round(s)); return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0'); };
 const urlValid = c => c.url && Date.now() - c.created < 6.5 * 864e5; // i link RunPod durano 7 giorni
 
@@ -34,6 +36,7 @@ async function renderMontage() {
     const saved = ls('mtJob'); if (saved && !MT.job) { try { MT.job = JSON.parse(saved); pollMontage(); } catch (e) { } }
   }
   const p = MT.proj;
+  if (p.items.some(id => String(id).startsWith('lib:')) && r2On() && !LIB.loaded && !LIB.loading) libRefresh(true).then(renderMontage);
   $('#mtTitle').value = p.title; $('#mtEnd').checked = p.end; $('#mtKeep').checked = p.keep; $('#mtVol').value = p.vol;
   $('#mtTitleShow').textContent = p.title || 'Senza titolo';
   $$('#mtTrans button').forEach(b => b.classList.toggle('active', b.dataset.v === p.trans));
@@ -53,8 +56,8 @@ async function renderMontage() {
 
   const list = $('#mtList');
   list.innerHTML = cs.length ? cs.map((c, i) => `<li>
-      <video src="${clipSrc(c)}#t=0.1" preload="metadata" muted playsinline></video>
-      <div class="tx"><b>Ciak ${c.take || '–'} · ${c.settings.duration}s</b><span>${esc(c.settings.prompt)}</span></div>
+      ${thumbOf(c)}
+      <div class="tx"><b>${labelOf(c)} · ${c.settings.duration}s</b><span>${esc(c.settings.prompt)}</span></div>
       <div class="mv">
         <button class="ic" data-up="${i}" ${i === 0 ? 'disabled' : ''} title="Su">↑</button>
         <button class="ic" data-dn="${i}" ${i === cs.length - 1 ? 'disabled' : ''} title="Giù">↓</button>
@@ -106,11 +109,14 @@ $('#mtMusicDel').onclick = async () => { await dbDel('audio', 'music'); MT.music
 $('#mtAdd').onclick = () => {
   MT.pick = [];
   const box = $('#pickGrid');
-  box.innerHTML = S.clips.length ? S.clips.map(c => `<div class="clip" data-pk="${c.id}">
-      <video src="${clipSrc(c)}#t=0.1" preload="metadata" muted playsinline></video>
-      <span class="tag">CIAK ${c.take || '–'}</span>
-      <div class="meta"><div>${esc(c.settings.prompt)}</div>${MODELS[c.settings.engine].name} · ${c.settings.duration}s</div></div>`).join('')
-    : '<div class="empty">Nessuna clip in Galleria.</div>';
+  const libs = r2On() ? LIB.items.filter(i => i.kind === 'video' || i.kind === 'image').map(i => libClip('lib:' + i.key)) : [];
+  const card = c => `<div class="clip" data-pk="${esc(c.id)}">${thumbOf(c)}
+      <span class="tag">${labelOf(c).toUpperCase()}</span>
+      <div class="meta"><div>${esc(c.settings.prompt)}</div>${MODELS[c.settings.engine].name} · ${c.settings.duration}s</div></div>`;
+  box.innerHTML = (S.clips.length || libs.length)
+    ? (S.clips.length ? '<h3 class="mgroup">Ciak generati</h3><div class="gallery pick">' + S.clips.map(card).join('') + '</div>' : '')
+      + (libs.length ? '<h3 class="mgroup">I miei file</h3><div class="gallery pick">' + libs.map(card).join('') + '</div>' : '')
+    : '<div class="empty">Nessuna clip: gira un ciak o carica i tuoi file in Galleria → I miei file.</div>';
   box.querySelectorAll('[data-pk]').forEach(el => el.onclick = () => {
     const id = el.dataset.pk, i = MT.pick.indexOf(id);
     i >= 0 ? MT.pick.splice(i, 1) : MT.pick.push(id);
@@ -136,20 +142,22 @@ $('#mtPlay').onclick = () => {
     if (!MT.prev) return;
     if (MT.prev.i >= MT.prev.cs.length) return stopPreview();
     const c = MT.prev.cs[MT.prev.i++];
-    v.src = clipSrc(c); v.muted = !MT.proj.keep; v.play().catch(() => { });
-    $('#mtStatus').textContent = `Anteprima: ciak ${c.take || ''} (${MT.prev.i}/${MT.prev.cs.length}) — titoli, transizioni e musica compaiono nel film montato`;
+    $('#mtStatus').textContent = `Anteprima: ${labelOf(c).toLowerCase()} (${MT.prev.i}/${MT.prev.cs.length}) — titoli, transizioni e musica compaiono nel film montato`;
+    if (c.kind === 'image') { v.removeAttribute('src'); v.poster = clipSrc(c); v.load(); MT.prev.t = setTimeout(next, c.settings.duration * 1000); return; }
+    v.poster = ''; v.src = clipSrc(c); v.muted = !MT.proj.keep; v.play().catch(() => { });
   };
   v.onended = next; v.classList.remove('hidden'); next();
 };
 function stopPreview() {
   if (!MT.prev) return;
-  MT.prev = null; const v = $('#mtVideo'); v.pause(); v.onended = null;
+  clearTimeout(MT.prev.t); MT.prev = null; const v = $('#mtVideo'); v.pause(); v.onended = null; v.poster = '';
   $('#mtPlay').textContent = '▶ Anteprima'; if (!MT.job) $('#mtStatus').textContent = '';
 }
 
 /* ---------- invio a RunPod ---------- */
 const b64Of = blob => new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(r.result); r.onerror = rej; r.readAsDataURL(blob); });
 async function clipSource(c, budget) {
+  if (c.lib) return c.kind === 'image' ? { key: c.key, image: true, duration: c.settings.duration } : { key: c.key };
   if (urlValid(c)) {
     const src = { url: c.url };
     // clip Kling con audio preso dal ciak di riferimento: il worker lo rimette al montaggio
@@ -157,6 +165,7 @@ async function clipSource(c, budget) {
     if (ref && urlValid(ref)) src.audio = { url: ref.url };
     return src;
   }
+  if (c.r2key && r2On()) return { key: c.r2key }; // copia nell'archivio: nessun limite di peso
   if (c.blob && c.blob.size * 1.37 < budget.left) { budget.left -= c.blob.size * 1.37; return { b64: await b64Of(c.blob) }; }
   throw new Error(`Il ciak ${c.take || ''} è più vecchio di 7 giorni ed è troppo pesante da rimandare a RunPod`);
 }
@@ -170,16 +179,17 @@ $('#mtExport').onclick = async () => {
   btn.disabled = true; btn.textContent = 'Preparo…';
   try {
     const budget = { left: MAX_PAYLOAD };
-    let music_b64 = null, music_ext = 'mp3';
+    let music_b64 = null, music_key = null, music_ext = 'mp3';
     if (MT.music) {
-      music_b64 = await b64Of(MT.music.blob); budget.left -= music_b64.length;
+      if (MT.music.key) music_key = MT.music.key;
+      else { music_b64 = await b64Of(MT.music.blob); budget.left -= music_b64.length; }
       music_ext = (MT.music.name.split('.').pop() || 'mp3').toLowerCase();
     }
     const clips = [];
     for (const c of cs) clips.push(await clipSource(c, budget));
     const input = {
       action: 'montage', clips, title: p.title.trim(), end_card: p.end, transition: p.trans,
-      keep_audio: p.keep, music_b64, music_ext, music_vol: p.vol / 100, width: W, height: H
+      keep_audio: p.keep, music_b64, music_key, music_ext, music_vol: p.vol / 100, width: W, height: H
     };
     const r = await rp(`/${montId()}/run`, { method: 'POST', body: JSON.stringify({ input }) });
     if (!r.id) throw new Error('Risposta inattesa da RunPod');
@@ -207,7 +217,7 @@ async function pollMontage() {
         if (out.video_b64) blob = await (await fetch('data:video/mp4;base64,' + out.video_b64)).blob();
         else if (url) { try { const f = await fetch(url); if (f.ok) blob = await f.blob(); } catch (e) { } }
         if (!blob && !url) throw Object.assign(new Error('RunPod non ha restituito il film'), { fatal: true });
-        await dbPut('films', { id: uid(), title: job.title, blob, url, created: Date.now(), dur: out.duration || 0 });
+        await dbPut('films', { id: uid(), title: job.title, blob, url, key: out.key || null, created: Date.now(), dur: out.duration || 0 });
         endJob(); toast('Film montato ✓ — lo trovi in "Film montati"');
         return;
       }

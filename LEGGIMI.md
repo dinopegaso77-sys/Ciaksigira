@@ -4,7 +4,7 @@ App personale per creare clip video con RunPod (Wan 2.6, Seedance 2.5, Kling O1)
 Tutta l'elaborazione avviene su RunPod: l'app invia le richieste e salva i risultati.
 
 ## 1. L'app (GitHub Pages)
-1. Crea un repository (es. `regista-ai`) e carica: `index.html`, `style.css`, `app.js`, `montaggio.js`.
+1. Crea un repository (es. `Ciaksigira`) e carica: `index.html`, `style.css`, `app.js`, `models.js`, `montaggio.js`, `libreria.js`.
 2. Settings → Pages → Branch `main` → Save.
 3. Apri l'app, crea la password, incolla la chiave API RunPod e premi "Prova chiave".
 
@@ -19,10 +19,17 @@ Serve per unire i ciak, aggiungere titoli, transizioni e musica, ed estrarre l'u
 
 Non modificare l'endpoint di Fonica Infinity: questo è un endpoint separato.
 
-### Film lunghi (facoltativo)
-Il film torna all'app dentro la risposta di RunPod. Per film molto lunghi o in 4K si può collegare uno spazio di
-archiviazione S3 (es. Cloudflare R2): aggiungi all'endpoint le variabili `BUCKET_ENDPOINT_URL`,
-`BUCKET_ACCESS_KEY_ID`, `BUCKET_SECRET_ACCESS_KEY` e il worker restituirà un link al file.
+## 3. L'archivio dei tuoi file (Cloudflare R2)
+Serve per caricare i tuoi video, foto e registrazioni, per tenere una copia di ogni ciak e per i film lunghi.
+1. Su RunPod apri l'endpoint di montaggio → **Manage → Edit Endpoint** → **Environment Variables**.
+2. Aggiungi queste 3 variabili (i valori sono quelli salvati da Cloudflare):
+   - `R2_ENDPOINT` → l'indirizzo S3 che finisce con `.r2.cloudflarestorage.com`
+   - `R2_ACCESS_KEY_ID` → l'Access Key ID
+   - `R2_SECRET_ACCESS_KEY` → la Secret Access Key
+3. Salva: RunPod riavvia il worker.
+4. Nell'app: ⚙︎ → Archivio file (R2) → **Verifica archivio**.
+
+Il bucket si chiama `ciaksigira` e deve avere la regola CORS per `https://dinopegaso77-sys.github.io`.
 
 ## Note
 - I link ai video RunPod durano 7 giorni: monta i ciak entro una settimana dalla generazione.

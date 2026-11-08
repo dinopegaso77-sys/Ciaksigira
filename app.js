@@ -17,7 +17,9 @@ const MODELS = {
     input(o) {
       const sizes = { '16:9': { '720p': '1280*720', '1080p': '1920*1080' }, '9:16': { '720p': '720*1280', '1080p': '1080*1920' } };
       const ratio = o.startImg ? '16:9' : o.ratio; // i2v solo orizzontale
-      const inp = { prompt: o.prompt, duration: o.duration, size: sizes[ratio][o.res], shot_type: 'single', seed: -1, enable_prompt_expansion: false };
+      const inp = { prompt: o.prompt, duration: o.duration, shot_type: 'single', seed: -1, enable_prompt_expansion: false };
+      if (o.startImg) inp.resolution = o.res;       // immagine→video: vuole "720p" / "1080p"
+      else inp.size = sizes[ratio][o.res];           // testo→video: vuole "1280*720" ecc.
       if (o.negative) inp.negative_prompt = o.negative;
       if (o.startImg) inp.image = o.startImg;
       return inp;
@@ -409,7 +411,7 @@ async function retryWithRawImages(job, err) {
   });
   if (!keys.length) return false;
   const s = typeof err === 'string' ? err : JSON.stringify(err || '');
-  if (!/400|invalid|image|img|url|base64|validation/i.test(s)) return false;
+  if (!/image|img_|base64|data ?uri/i.test(s)) return false; // solo errori che riguardano la foto
   job.rawTried = true;
   const inp2 = { ...inp };
   keys.forEach(k => { inp2[k] = Array.isArray(inp[k]) ? inp[k].map(stripPrefix) : stripPrefix(inp[k]); });

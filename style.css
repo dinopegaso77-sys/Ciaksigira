@@ -287,3 +287,5 @@ h2.sub{font-size:1.6rem;margin:28px 0 12px}
 }
 
 .pill.bad{border-color:var(--red);color:#ff8a80}
+
+.job p.e{display:block;-webkit-line-clamp:unset;overflow:visible;word-break:break-word;max-height:9em;overflow-y:auto}

@@ -308,13 +308,14 @@ $('#goBtn').onclick = async () => {
   const btn = $('#goBtn'); btn.disabled = true; btn.textContent = 'Invio al set…';
   const endpoint = m.endpoint(o);
   try {
-    const r = await rp(`/${endpoint}/run`, { method: 'POST', body: JSON.stringify({ input: m.input(o) }) });
+    const input = m.input(o);
+    const r = await rp(`/${endpoint}/run`, { method: 'POST', body: JSON.stringify({ input }) });
     if (!r.id) throw new Error('Risposta inattesa da RunPod');
     const take = nextTake(); ls('take', String(take)); showTake();
     const job = {
       id: uid(), jobId: r.id, endpoint, status: r.status || 'IN_QUEUE', created: Date.now(), est, take,
       settings: { engine: o.engine, prompt: o.rawPrompt, negative: o.negative, ratio: o.ratio, duration: o.duration, res: o.res, audio: o.audio, charIds: o.charIds, refVideoId: o.refVideoId },
-      fullPrompt: o.prompt
+      fullPrompt: o.prompt, input
     };
     S.jobs.unshift(job); saveJobs(); renderJobs(); poll(job);
     toast(`Ciak ${take} in ripresa: puoi chiudere l'app, riprende da sola`);
@@ -323,7 +324,7 @@ $('#goBtn').onclick = async () => {
 };
 
 /* ---------- lavori ---------- */
-function saveJobs() { ls('jobs', JSON.stringify(S.jobs)); }
+function saveJobs() { ls('jobs', JSON.stringify(S.jobs.map(({ input, ...j }) => j))); }
 const STAT = { IN_QUEUE: 'In coda', IN_PROGRESS: 'Si gira', COMPLETED: 'Salvataggio', FAILED: 'Errore', CANCELLED: 'Annullata', TIMED_OUT: 'Tempo scaduto' };
 const BAD = ['FAILED', 'CANCELLED', 'TIMED_OUT'];
 function jobsHtml() {
@@ -335,7 +336,7 @@ function jobsHtml() {
       <div class="t"><b>Ciak ${j.take || ''} · ${MODELS[j.settings.engine].name}</b><span>${STAT[j.status] || j.status} · ${mins} min</span></div>
       <p>${esc(j.settings.prompt)}</p>
       ${bad ? `<p class="e">${esc(j.error || 'Generazione non riuscita')}</p>` : '<div class="prog"><i></i></div>'}
-      <div class="actions">${bad ? `<button class="btn small" data-retry="${j.id}">Riprova</button><button class="btn small" data-rm="${j.id}">Rimuovi</button>`
+      <div class="actions">${bad ? `<button class="btn small" data-retry="${j.id}">Riprova</button><button class="btn small" data-copy="${j.id}">Copia errore</button><button class="btn small" data-rm="${j.id}">Rimuovi</button>`
         : `<button class="btn small" data-cancel="${j.id}">Annulla</button>`}</div></div>`;
   }).join('');
 }
@@ -344,6 +345,10 @@ function renderJobs() {
   ['#jobs', '#jobsSheet'].forEach(sel => {
     const box = $(sel); box.innerHTML = html;
     box.querySelectorAll('[data-rm]').forEach(b => b.onclick = () => removeJob(b.dataset.rm));
+    box.querySelectorAll('[data-copy]').forEach(b => b.onclick = async () => {
+      const j = S.jobs.find(x => x.id === b.dataset.copy);
+      try { await navigator.clipboard.writeText(j.error || ''); toast('Errore copiato: incollalo a Claude'); } catch (e) { toast('Copia non riuscita: fai uno screenshot'); }
+    });
     box.querySelectorAll('[data-retry]').forEach(b => b.onclick = () => {
       const j = S.jobs.find(x => x.id === b.dataset.retry); loadSettings(j.settings); removeJob(j.id);
       closeM($('#mJobs')); go('crea'); toast('Impostazioni ricaricate: premi Ciak');
@@ -384,7 +389,9 @@ async function poll(job) {
         return;
       }
       if (BAD.includes(r.status)) {
-        job.done = true; job.error = traduciErrore(r.error || (r.output && r.output.error)); saveJobs(); renderJobs(); return;
+        const raw = r.error || (r.output && r.output.error);
+        if (await retryWithRawImages(job, raw)) continue;
+        job.done = true; job.error = traduciErrore(raw) + (job.firstError ? '\n— Primo tentativo: ' + job.firstError : ''); saveJobs(); renderJobs(); return;
       }
       saveJobs(); renderJobs();
     } catch (e) {
@@ -392,12 +399,34 @@ async function poll(job) {
     }
   }
 }
+/* Se RunPod rifiuta la foto come data-URI, la rimanda una volta in base64 puro (senza prefisso) */
+const stripPrefix = v => typeof v === 'string' && v.startsWith('data:') ? v.slice(v.indexOf(',') + 1) : v;
+async function retryWithRawImages(job, err) {
+  const inp = job.input;
+  if (!inp || job.rawTried) return false;
+  const keys = ['image', 'images', 'reference_images', 'video'].filter(k => {
+    const v = inp[k]; return Array.isArray(v) ? v.some(x => String(x).startsWith('data:')) : String(v || '').startsWith('data:');
+  });
+  if (!keys.length) return false;
+  const s = typeof err === 'string' ? err : JSON.stringify(err || '');
+  if (!/400|invalid|image|img|url|base64|validation/i.test(s)) return false;
+  job.rawTried = true;
+  const inp2 = { ...inp };
+  keys.forEach(k => { inp2[k] = Array.isArray(inp[k]) ? inp[k].map(stripPrefix) : stripPrefix(inp[k]); });
+  try {
+    const r = await rp(`/${job.endpoint}/run`, { method: 'POST', body: JSON.stringify({ input: inp2 }) });
+    if (!r.id) return false;
+    job.jobId = r.id; job.status = 'IN_QUEUE'; job.input = inp2; job.firstError = s.slice(0, 300);
+    saveJobs(); renderJobs(); toast(`Ciak ${job.take}: riprovo con la foto in un altro formato`);
+    return true;
+  } catch (e) { return false; }
+}
 function traduciErrore(e) {
   const s = typeof e === 'string' ? e : JSON.stringify(e || '');
-  if (/image/i.test(s) && /(url|invalid|download|fetch)/i.test(s)) return 'Il modello non ha accettato la foto. Riprova senza foto o con un\'immagine diversa. (' + s.slice(0, 120) + ')';
+  if (/image/i.test(s) && /(url|invalid|download|fetch)/i.test(s)) return 'Il modello non ha accettato la foto. (' + s.slice(0, 500) + ')';
   if (/safety|sensitive|nsfw|moderat/i.test(s)) return 'Bloccata dal filtro di sicurezza del modello: riformula la scena.';
   if (/balance|credit|insufficient/i.test(s)) return 'Credito RunPod insufficiente.';
-  return s ? s.slice(0, 200) : 'Generazione non riuscita';
+  return s ? s.slice(0, 700) : 'Generazione non riuscita';
 }
 
 async function saveClip(job, url, cost) {

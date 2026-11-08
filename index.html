@@ -8,7 +8,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Kalam:wght@400;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css">
+<link rel="stylesheet" href="style.css?v=1.6">
 </head>
 <body>
 
@@ -92,6 +92,7 @@
           </div>
 
           <label id="refVidWrap" class="hidden">Ciak di riferimento (movimento)<select id="refVideo"></select></label>
+          <label class="check hidden" id="klAudioWrap"><input type="checkbox" id="klAudio" checked> Usa l'audio del ciak di riferimento</label>
 
           <details class="adv" id="negWrap">
             <summary>Opzioni avanzate</summary>
@@ -261,6 +262,7 @@
     </details>
 
     <button class="btn big" id="lockNow">🔒 Blocca l'app</button>
+    <p class="muted small ver">Regista AI · versione <b id="appVer">1.6</b></p>
   </div>
 </div>
 
@@ -321,7 +323,7 @@
 </div>
 
 <div id="toast" class="toast"></div>
-<script src="app.js"></script>
-<script src="montaggio.js"></script>
+<script src="app.js?v=1.6"></script>
+<script src="montaggio.js?v=1.6"></script>
 </body>
 </html>

@@ -150,7 +150,13 @@ function stopPreview() {
 /* ---------- invio a RunPod ---------- */
 const b64Of = blob => new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(r.result); r.onerror = rej; r.readAsDataURL(blob); });
 async function clipSource(c, budget) {
-  if (urlValid(c)) return { url: c.url };
+  if (urlValid(c)) {
+    const src = { url: c.url };
+    // clip Kling con audio preso dal ciak di riferimento: il worker lo rimette al montaggio
+    const ref = c.audioFrom && S.clips.find(x => x.id === c.audioFrom);
+    if (ref && urlValid(ref)) src.audio = { url: ref.url };
+    return src;
+  }
   if (c.blob && c.blob.size * 1.37 < budget.left) { budget.left -= c.blob.size * 1.37; return { b64: await b64Of(c.blob) }; }
   throw new Error(`Il ciak ${c.take || ''} è più vecchio di 7 giorni ed è troppo pesante da rimandare a RunPod`);
 }

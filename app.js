@@ -1,5 +1,6 @@
 /* Regista AI — generatore di clip video via RunPod Public Endpoints */
 'use strict';
+const APP_VERSION = '1.6'; // deve coincidere con ?v= in index.html
 
 const API = 'https://api.runpod.ai/v2';
 const $ = s => document.querySelector(s);
@@ -9,7 +10,7 @@ const money = n => (Math.round(n * 100) / 100).toFixed(2).replace('.', ',') + ' 
 /* ---------- modelli ---------- */
 const MODELS = {
   wan: {
-    name: 'Wan 2.6', desc: 'Economico: ideale per prove e bozze', neg: true, audio: false,
+    name: 'Wan 2.6', desc: 'Economico e con audio: ideale per prove e bozze', neg: true, audio: false,
     ratios: ['16:9', '9:16'], durations: [5, 10, 15], res: ['720p', '1080p'], defRes: '720p',
     hint: 'La foto di partenza diventa il primo fotogramma.',
     endpoint: o => o.startImg ? 'wan-2-6-i2v' : 'wan-2-6-t2v',
@@ -18,7 +19,7 @@ const MODELS = {
       const sizes = { '16:9': { '720p': '1280*720', '1080p': '1920*1080' }, '9:16': { '720p': '720*1280', '1080p': '1080*1920' } };
       const ratio = o.startImg ? '16:9' : o.ratio; // i2v solo orizzontale
       const inp = { prompt: o.prompt, duration: o.duration, shot_type: 'single', seed: -1, enable_prompt_expansion: false };
-      if (o.startImg) inp.resolution = o.res;       // immagine→video: vuole "720p" / "1080p"
+      if (o.startImg) { inp.resolution = o.res; inp.size = o.res; } // immagine→video: RunPod gira 'size' al campo 'resolution', che vuole "720p" / "1080p"
       else inp.size = sizes[ratio][o.res];           // testo→video: vuole "1280*720" ecc.
       if (o.negative) inp.negative_prompt = o.negative;
       if (o.startImg) inp.image = o.startImg;
@@ -40,7 +41,7 @@ const MODELS = {
     }
   },
   kling: {
-    name: 'Kling O1', desc: 'Segue il movimento di un tuo ciak e ci mette i tuoi personaggi', neg: true, audio: false, needsVideo: true,
+    name: 'Kling O1', desc: 'Segue il movimento di un tuo ciak e ci mette i tuoi personaggi (video muto)', neg: true, audio: false, needsVideo: true,
     ratios: ['16:9', '9:16', '1:1'], durations: [3, 4, 5, 6, 7, 8, 9, 10], res: [], defRes: null,
     hint: 'Scegli i personaggi (o una foto) e un ciak di riferimento.',
     endpoint: () => 'kling-video-o1-r2v',
@@ -234,6 +235,7 @@ function setEngine(e, keepVals) {
   $('#negWrap').classList.toggle('hidden', !m.neg);
   $('#refHint').textContent = m.hint;
   $('#refVidWrap').classList.toggle('hidden', !m.needsVideo);
+  $('#klAudioWrap').classList.toggle('hidden', !m.needsVideo);
   if (m.needsVideo) fillRefVideos(keepVals?.refVideoId);
   updateCost();
 }
@@ -263,7 +265,8 @@ function currentOpts() {
     ratio: $('#ratio').value, duration: +$('#duration').value,
     res: m.res.length ? $('#res').value : '720p', audio: $('#audio').checked,
     startImg: S.startImg, charImgs: chars.map(c => c.img), charIds: chars.map(c => c.id),
-    refVideoId: m.needsVideo ? $('#refVideo').value : ''
+    refVideoId: m.needsVideo ? $('#refVideo').value : '',
+    klAudio: !!m.needsVideo && $('#klAudio').checked
   };
 }
 function updateCost() {
@@ -316,7 +319,7 @@ $('#goBtn').onclick = async () => {
     const take = nextTake(); ls('take', String(take)); showTake();
     const job = {
       id: uid(), jobId: r.id, endpoint, status: r.status || 'IN_QUEUE', created: Date.now(), est, take,
-      settings: { engine: o.engine, prompt: o.rawPrompt, negative: o.negative, ratio: o.ratio, duration: o.duration, res: o.res, audio: o.audio, charIds: o.charIds, refVideoId: o.refVideoId },
+      settings: { engine: o.engine, prompt: o.rawPrompt, negative: o.negative, ratio: o.ratio, duration: o.duration, res: o.res, audio: o.audio, charIds: o.charIds, refVideoId: o.refVideoId, klAudio: o.klAudio },
       fullPrompt: o.prompt, input
     };
     S.jobs.unshift(job); saveJobs(); renderJobs(); poll(job);
@@ -327,7 +330,7 @@ $('#goBtn').onclick = async () => {
 
 /* ---------- lavori ---------- */
 function saveJobs() { ls('jobs', JSON.stringify(S.jobs.map(({ input, ...j }) => j))); }
-const STAT = { IN_QUEUE: 'In coda', IN_PROGRESS: 'Si gira', COMPLETED: 'Salvataggio', FAILED: 'Errore', CANCELLED: 'Annullata', TIMED_OUT: 'Tempo scaduto' };
+const STAT = { IN_QUEUE: 'In coda', IN_PROGRESS: 'Si gira', COMPLETED: 'Salvataggio', MUX: 'Aggiungo l\'audio', FAILED: 'Errore', CANCELLED: 'Annullata', TIMED_OUT: 'Tempo scaduto' };
 const BAD = ['FAILED', 'CANCELLED', 'TIMED_OUT'];
 function jobsHtml() {
   if (!S.jobs.length) return '<div class="empty-set">Nessuna ripresa in corso.<br>Le clip finite vanno in Galleria.</div>';
@@ -384,8 +387,10 @@ async function poll(job) {
         const out = r.output || {};
         const url = typeof out === 'string' ? out : (out.result || out.video_url || out.url || (out.videos && out.videos[0]));
         if (!url) throw Object.assign(new Error('Nessun video nella risposta'), { fatal: true });
+        let muxed = null;
+        if (job.settings.klAudio && job.settings.refVideoId) { job.status = 'MUX'; renderJobs(); muxed = await addRefAudio(url, job.settings.refVideoId); }
         renderJobs();
-        await saveClip(job, url, out.cost);
+        await saveClip(job, url, out.cost, muxed);
         job.done = true; removeJob(job.id);
         toast(`Ciak ${job.take} pronto in Galleria ✓`); if ($('#view-galleria').classList.contains('active')) renderGallery();
         return;
@@ -431,10 +436,42 @@ function traduciErrore(e) {
   return s ? s.slice(0, 700) : 'Generazione non riuscita';
 }
 
-async function saveClip(job, url, cost) {
-  let blob = null;
-  try { const r = await fetch(url); if (r.ok) blob = await r.blob(); } catch (e) { }
-  const clip = { id: job.id, take: job.take, url, blob, created: Date.now(), cost: typeof cost === 'number' ? cost : job.est, settings: job.settings, fullPrompt: job.fullPrompt, fav: false };
+/* Kling è muto: il worker RunPod ci mette l'audio del ciak di riferimento */
+async function workerCall(input, maxWait = 120) {
+  const id = (typeof montId === 'function') ? montId() : '';
+  if (!id) throw new Error('worker non collegato');
+  const r = await rp(`/${id}/runsync`, { method: 'POST', body: JSON.stringify({ input }) });
+  let out = r.status === 'COMPLETED' ? r.output : null;
+  for (let n = 0; !out && r.id && n < maxWait / 3; n++) {
+    await new Promise(res => setTimeout(res, 3000));
+    const s = await rp(`/${id}/status/${r.id}`);
+    if (s.status === 'COMPLETED') out = s.output;
+    else if (BAD.includes(s.status)) throw new Error(s.error || s.status);
+  }
+  if (!out) throw new Error('il worker non ha risposto in tempo');
+  if (out.error) throw new Error(out.error);
+  return out;
+}
+const asSource = v => v.startsWith('data:') ? { b64: v } : { url: v };
+async function addRefAudio(url, refId) {
+  const ref = S.clips.find(c => c.id === refId);
+  if (!ref) return null;
+  try {
+    const out = await workerCall({ action: 'mux', video: { url }, audio: asSource(await videoSource(ref)) });
+    if (!out.video_b64) return null;
+    return { blob: await (await fetch('data:video/mp4;base64,' + out.video_b64)).blob(), audioFrom: refId };
+  } catch (e) {
+    toast(e.message === 'worker non collegato'
+      ? 'Clip salvata muta: per l\'audio collega il worker di montaggio in ⚙︎'
+      : 'Clip salvata muta: audio non aggiunto (' + e.message.slice(0, 80) + ')', 6000);
+    return null;
+  }
+}
+
+async function saveClip(job, url, cost, muxed) {
+  let blob = muxed ? muxed.blob : null;
+  if (!blob) try { const r = await fetch(url); if (r.ok) blob = await r.blob(); } catch (e) { }
+  const clip = { id: job.id, take: job.take, url, blob, created: Date.now(), cost: typeof cost === 'number' ? cost : job.est, settings: job.settings, fullPrompt: job.fullPrompt, fav: false, audioFrom: muxed ? muxed.audioFrom : null };
   await dbPut('clips', clip);
   S.clips.unshift(clip);
   if (MODELS[S.engine].needsVideo) fillRefVideos();

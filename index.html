@@ -8,7 +8,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Kalam:wght@400;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=1.8">
+<link rel="stylesheet" href="style.css?v=1.9">
 </head>
 <body>
 
@@ -94,6 +94,7 @@
               <span id="audioInName" class="muted small">Nessun audio</span>
               <button class="link small hidden" id="audioInClear">Togli</button>
             </div>
+            <button class="link small" id="audioInVoice" type="button">🗣 oppure crea una voce AI dal testo</button>
           </div>
 
           <label id="refVidWrap" class="hidden">Ciak di riferimento (movimento)<select id="refVideo"></select></label>
@@ -147,7 +148,8 @@
       <div id="libOn" class="hidden">
         <div class="libbar">
           <label class="btn primary">⬆ Carica file<input type="file" id="libFile" accept="video/*,image/*,audio/*" multiple></label>
-          <button class="btn" id="recOpen">🎙 Registra voce</button>
+          <button class="btn" id="voOpen">🗣 Crea voce AI</button>
+          <button class="btn" id="recOpen">🎙 Registra</button>
           <button class="btn" id="libReload" title="Aggiorna">⟳</button>
         </div>
         <div class="chips" id="libFilter">
@@ -299,7 +301,7 @@
     </details>
 
     <button class="btn big" id="lockNow">🔒 Blocca l'app</button>
-    <p class="muted small ver">Regista AI · versione <b id="appVer">1.8</b></p>
+    <p class="muted small ver">Regista AI · versione <b id="appVer">1.9</b></p>
   </div>
 </div>
 
@@ -321,6 +323,51 @@
     <div class="mhead"><h2 class="chalk" id="useTitle">File</h2><button class="x" data-close>✕</button></div>
     <div id="usePrev" class="useprev"></div>
     <div id="useActs" class="useacts"></div>
+  </div>
+</div>
+
+<div class="modal hidden" id="mDub">
+  <div class="mbox">
+    <div class="mhead"><h2 class="chalk" id="dubTitle">Aggiungi voce</h2><button class="x" data-close>✕</button></div>
+    <p class="muted small">RunPod unisce la voce al video e crea una nuova versione: l'originale resta com'è.</p>
+    <label>Voce o audio<select id="dubAudio"></select></label>
+    <button class="link small" id="dubNew" type="button">🗣 Crea una nuova voce AI</button>
+    <audio id="dubPrev" class="hidden" controls></audio>
+    <div class="row3">
+      <label>Inizia dal secondo<input id="dubStart" type="number" min="0" step="0.5" value="0"></label>
+      <label>Volume voce <span id="dubVolVal" class="muted">100%</span><input id="dubVol" type="range" min="50" max="200" value="100"></label>
+    </div>
+    <label>Audio originale del video
+      <select id="dubOrig"><option value="low">Tienilo, ma più basso</option><option value="keep">Tienilo uguale</option><option value="off">Toglilo</option></select>
+    </label>
+    <button class="btn primary big" id="dubGo">🎤 Unisci su RunPod</button>
+  </div>
+</div>
+
+<div class="modal hidden" id="mVoice">
+  <div class="mbox">
+    <div class="mhead"><h2 class="chalk">Crea voce AI</h2><button class="x" data-close>✕</button></div>
+    <label>Cosa deve dire
+      <textarea id="voText" rows="5" placeholder="Scrivi qui le battute, in italiano o in un'altra lingua. La punteggiatura conta: virgole e punti fanno le pause."></textarea>
+    </label>
+    <div class="row3">
+      <label>Voce<select id="voVoice"></select></label>
+      <label>Emozione<select id="voEmo"></select></label>
+      <label>Velocità <span id="voSpeedVal" class="muted">1,0×</span><input id="voSpeed" type="range" min="0.5" max="2" step="0.1" value="1"></label>
+    </div>
+    <details class="adv"><summary>Nome del file</summary><label>Nome<input id="voName" type="text" placeholder="Es. narratore-scena-1"></label></details>
+    <div class="cost" id="voCost"></div>
+    <button class="btn primary big" id="voGo">🗣 Genera la voce</button>
+    <p id="voStatus" class="muted small"></p>
+    <div id="voResult" class="hidden voresult">
+      <audio id="voPlay" controls></audio>
+      <p id="voInfo" class="muted small"></p>
+      <div class="actions">
+        <button class="btn" id="voUseTalk">🎤 Fai parlare un personaggio (InfiniteTalk)</button>
+        <button class="btn primary" id="voUseDub">✓ Usa questa voce</button>
+      </div>
+      <p class="muted small">La voce è salvata in "I miei file": la ritrovi anche per il montaggio.</p>
+    </div>
   </div>
 </div>
 
@@ -376,6 +423,7 @@
       <button class="btn small" id="vReuse">↺ Riusa impostazioni</button>
       <button class="btn small" id="vContinue">⤳ Continua da qui</button>
       <button class="btn small" id="vToMont">+ Al montaggio</button>
+      <button class="btn small" id="vDub">🎤 Aggiungi voce</button>
     </div>
   </div>
 </div>
@@ -389,9 +437,10 @@
 </div>
 
 <div id="toast" class="toast"></div>
-<script src="models.js?v=1.8"></script>
-<script src="app.js?v=1.8"></script>
-<script src="montaggio.js?v=1.8"></script>
-<script src="libreria.js?v=1.8"></script>
+<script src="models.js?v=1.9"></script>
+<script src="app.js?v=1.9"></script>
+<script src="montaggio.js?v=1.9"></script>
+<script src="libreria.js?v=1.9"></script>
+<script src="voce.js?v=1.9"></script>
 </body>
 </html>

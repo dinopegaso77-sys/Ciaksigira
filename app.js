@@ -1,6 +1,6 @@
 /* Regista AI — generatore di clip video via RunPod Public Endpoints */
 'use strict';
-const APP_VERSION = '1.8'; // deve coincidere con ?v= in index.html
+const APP_VERSION = '1.9'; // deve coincidere con ?v= in index.html
 
 const API = 'https://api.runpod.ai/v2';
 const $ = s => document.querySelector(s);

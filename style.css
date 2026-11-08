@@ -347,3 +347,12 @@ h2.sub{font-size:1.6rem;margin:28px 0 12px}
 @media (max-width:640px){ .tl img{width:70px} .libbar .btn{flex:1 1 auto} .uprow{grid-template-columns:1fr 70px 34px} }
 .libbar label.btn{margin:0;font-family:"Inter",system-ui,sans-serif;letter-spacing:0;font-size:.95rem;color:#0a0a0a}
 .uprow .prog i{animation:none;transform:none;background:var(--text);transition:width .2s}
+
+/* ---------- voce AI ---------- */
+#dubPrev,#voPlay{width:100%;margin-top:10px}
+.voresult{border-top:1px dashed var(--line2);margin-top:12px;padding-top:10px}
+#mVoice .row3,#mDub .row3{grid-template-columns:repeat(auto-fit,minmax(120px,1fr))}
+#mVoice label .muted,#mDub label .muted{font-family:"Inter",sans-serif;letter-spacing:0;font-size:.8rem}
+#audioInVoice{display:block;margin-top:8px}
+#dubNew{display:block;margin-top:8px}
+@media (max-width:640px){ .libbar .btn{padding:9px 10px;font-size:.88rem} }

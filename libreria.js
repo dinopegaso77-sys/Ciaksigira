@@ -209,7 +209,7 @@ function openUse(key) {
   $('#usePrev').innerHTML = i.kind === 'video' ? `<video src="${u}" controls playsinline></video>`
     : i.kind === 'image' ? `<img src="${u}" alt="">` : i.kind === 'audio' ? `<audio src="${u}" controls></audio>` : '';
   const A = {
-    video: [['ref', '🎞 Usa come ciak di riferimento (movimento)'], ['mont', '✂️ Aggiungi al montaggio'], ['last', '⤳ Continua da qui (ultimo fotogramma)']],
+    video: [['ref', '🎞 Usa come ciak di riferimento (movimento)'], ['mont', '✂️ Aggiungi al montaggio'], ['dub', '🎤 Aggiungi voce o audio'], ['last', '⤳ Continua da qui (ultimo fotogramma)']],
     image: [['start', '📷 Usa come foto di partenza'], ['mont', '✂️ Aggiungi al montaggio'], ['char', '🎭 Crea un personaggio da questa foto']],
     audio: [['music', '♪ Musica del film (montaggio)'], ['talk', '🎤 Voce o canzone per InfiniteTalk']]
   }[i.kind] || [];
@@ -221,6 +221,7 @@ function openUse(key) {
 async function useAction(a, btn) {
   const i = USE, url = await libUrl(i.key);
   const done = msg => { closeM($('#mUse')); if (msg) toast(msg); };
+  if (a === 'dub') { done(); openDub({ item: i }); return; }
   if (a === 'start') { S.startImg = url; showStart(); done(); go('crea'); toast('Foto di partenza impostata'); }
   if (a === 'mont') { if (!MT.proj) mtLoad(); MT.proj.items.push('lib:' + i.key); mtSave(); done(`Aggiunto al montaggio (${MT.proj.items.length} in timeline)`); }
   if (a === 'ref') {

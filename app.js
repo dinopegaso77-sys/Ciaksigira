@@ -17,7 +17,7 @@ const MODELS = {
     input(o) {
       const sizes = { '16:9': { '720p': '1280*720', '1080p': '1920*1080' }, '9:16': { '720p': '720*1280', '1080p': '1080*1920' } };
       const ratio = o.startImg ? '16:9' : o.ratio; // i2v solo orizzontale
-      const inp = { prompt: o.prompt, duration: o.duration, size: sizes[ratio][o.res], seed: -1, enable_prompt_expansion: false };
+      const inp = { prompt: o.prompt, duration: o.duration, size: sizes[ratio][o.res], shot_type: 'single', seed: -1, enable_prompt_expansion: false };
       if (o.negative) inp.negative_prompt = o.negative;
       if (o.startImg) inp.image = o.startImg;
       return inp;
@@ -335,10 +335,14 @@ function renderJobs() {
     });
   });
   const active = S.jobs.filter(j => !BAD.includes(j.status)).length;
-  $('#jobsCount').textContent = active;
+  const errs = S.jobs.length - active;
+  const parts = [];
+  if (active) parts.push(`${active} in ripresa`);
+  if (errs) parts.push(`${errs} ${errs === 1 ? 'errore' : 'errori'}`);
+  $('#jobsCount').textContent = parts.join(' · ');
   $('#jobsPill').classList.toggle('hidden', !S.jobs.length);
+  $('#jobsPill').classList.toggle('bad', !active && !!errs);
   $('#jobsPill').querySelector('.rec').style.display = active ? '' : 'none';
-  if (!active && S.jobs.length) $('#jobsCount').textContent = S.jobs.length + ' errori ·';
 }
 function removeJob(id) { S.jobs = S.jobs.filter(j => j.id !== id); saveJobs(); renderJobs(); }
 

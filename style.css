@@ -285,3 +285,5 @@ h2.sub{font-size:1.6rem;margin:28px 0 12px}
   .brand{font-size:1.4rem}
   .tab{font-size:1.05rem;padding:6px 8px}
 }
+
+.pill.bad{border-color:var(--red);color:#ff8a80}

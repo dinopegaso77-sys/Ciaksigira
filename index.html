@@ -1,0 +1,325 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#111111">
+<title>Regista AI</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Kalam:wght@400;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<!-- ===== BLOCCO PASSWORD ===== -->
+<div id="lock" class="lock">
+  <form id="lockForm" class="slate lockbox" autocomplete="off">
+    <div class="sticks"><span></span><span></span></div>
+    <div class="slate-body">
+      <div class="brand big">REGISTA <b>AI</b></div>
+      <h2 id="lockTitle" class="chalk">App bloccata</h2>
+      <p id="lockText" class="muted"></p>
+      <label>Password<input id="lockPw" type="password" autocomplete="current-password"></label>
+      <label class="hidden">Ripeti la password<input id="lockPw2" type="password" autocomplete="new-password"></label>
+      <p id="lockMsg" class="status ko"></p>
+      <button class="btn primary big" id="lockBtn" type="submit">Entra</button>
+      <button class="link small hidden" id="lockForgot" type="button">Password dimenticata?</button>
+    </div>
+  </form>
+</div>
+
+<!-- ===== INTESTAZIONE ===== -->
+<header class="top">
+  <div class="stripes"></div>
+  <div class="topin">
+    <div class="brand">REGISTA <b>AI</b></div>
+    <nav class="tabs">
+      <button class="tab active" data-view="crea">Crea</button>
+      <button class="tab" data-view="galleria">Galleria</button>
+      <button class="tab" data-view="montaggio">Montaggio</button>
+      <button class="tab" data-view="personaggi">Personaggi</button>
+    </nav>
+    <div class="topact">
+      <button class="pill hidden" id="jobsPill"><span class="rec"></span><span id="jobsCount">0</span> in ripresa</button>
+      <button class="iconbtn" id="openSet" aria-label="Impostazioni">⚙︎</button>
+    </div>
+  </div>
+</header>
+
+<main>
+  <!-- ===== CREA ===== -->
+  <section id="view-crea" class="view active">
+    <div id="noKey" class="banner hidden">
+      <span>Collega RunPod per iniziare a girare.</span>
+      <button class="btn primary small" data-open="mSettings">Collega</button>
+    </div>
+    <div class="grid-crea">
+      <div class="slate">
+        <div class="sticks"><span></span><span></span></div>
+        <div class="slate-body">
+          <div class="slate-head">
+            <div><small>SCENA</small><h2 class="chalk">Nuova clip</h2></div>
+            <div class="take"><small>CIAK</small><b id="nextTake">1</b></div>
+          </div>
+
+          <div class="field-label">Modello</div>
+          <div class="seg3" id="engine">
+            <button class="active" data-v="wan">Wan</button>
+            <button data-v="seedance">Seedance</button>
+            <button data-v="kling">Kling</button>
+          </div>
+          <p id="engDesc" class="engdesc"></p>
+
+          <label>Descrizione della scena
+            <textarea id="prompt" rows="4" placeholder="Es. Primo piano di una donna sotto la pioggia, luci al neon riflesse sull'asfalto, carrellata lenta in avanti, stile cinema 35mm"></textarea>
+          </label>
+
+          <div class="row3">
+            <label>Formato<select id="ratio"></select></label>
+            <label>Durata<select id="duration"></select></label>
+            <label id="resWrap">Qualità<select id="res"></select></label>
+          </div>
+          <label class="check" id="audioWrap"><input type="checkbox" id="audio" checked> Genera audio (voci, rumori, musica)</label>
+
+          <div class="field-label">Personaggi e foto</div>
+          <p class="refhint" id="refHint"></p>
+          <div class="refrow">
+            <div id="refChars" class="refchars"></div>
+            <label class="chipbtn">+ Foto di partenza<input type="file" id="refFile" accept="image/*"></label>
+            <div id="refPreview" class="refpreview hidden"></div>
+            <button class="link small hidden" id="refClear">Togli foto</button>
+          </div>
+
+          <details class="adv" id="negWrap">
+            <summary>Opzioni avanzate</summary>
+            <label>Cosa evitare
+              <input id="negative" type="text" value="sfocato, deformato, testo, watermark, mani deformate, arti in più">
+            </label>
+          </details>
+
+          <div class="gobar">
+            <div class="cost" id="costHint"></div>
+            <button class="btn primary big" id="goBtn">🎬 Ciak, si gira!</button>
+          </div>
+        </div>
+      </div>
+
+      <aside class="slate side desk">
+        <div class="slate-body">
+          <div class="slate-head"><div><small>SET</small><h2 class="chalk">In ripresa</h2></div></div>
+          <div id="jobs" class="jobs"></div>
+        </div>
+      </aside>
+    </div>
+  </section>
+
+  <!-- ===== GALLERIA ===== -->
+  <section id="view-galleria" class="view">
+    <div class="pagehead">
+      <h1 class="chalk">Galleria</h1>
+      <button class="btn small" id="cmpBtn" disabled>⇆ Confronta (0/2)</button>
+    </div>
+    <div class="chips" id="galFilter">
+      <button class="chip active" data-v="all">Tutte</button>
+      <button class="chip" data-v="fav">★ Preferite</button>
+      <button class="chip" data-v="wan">Wan</button>
+      <button class="chip" data-v="seedance">Seedance</button>
+      <button class="chip" data-v="kling">Kling</button>
+    </div>
+    <div id="gallery" class="gallery"></div>
+  </section>
+
+  <!-- ===== PERSONAGGI ===== -->
+  <section id="view-personaggi" class="view">
+    <div class="pagehead">
+      <h1 class="chalk">Personaggi</h1>
+      <button class="btn primary small" data-open="mChar">+ Nuovo</button>
+    </div>
+    <p class="muted small intro">Scegli un personaggio in "Crea" e il modello userà la sua foto come riferimento: resta uguale in ogni scena.</p>
+    <div id="chars" class="chars"></div>
+  </section>
+
+  <!-- ===== MONTAGGIO ===== -->
+  <section id="view-montaggio" class="view">
+    <div class="pagehead">
+      <h1 class="chalk">Montaggio</h1>
+      <button class="btn small" id="mtNew">Nuovo film</button>
+    </div>
+    <div class="grid-mont">
+      <div class="slate">
+        <div class="sticks"><span></span><span></span></div>
+        <div class="slate-body">
+          <div class="slate-head">
+            <div><small>FILM</small><h2 class="chalk" id="mtTitleShow">Senza titolo</h2></div>
+            <div class="take"><small>DURATA</small><b id="mtDur">0:00</b></div>
+          </div>
+          <div class="screen"><video id="mtVideo" playsinline controls></video>
+            <div class="screen-empty" id="mtEmpty">Aggiungi dei ciak alla timeline<br>per vedere il film qui</div>
+          </div>
+          <div class="prog big hidden" id="mtProgWrap"><i id="mtProg"></i></div>
+          <p class="muted small" id="mtStatus"></p>
+          <div class="actions two">
+            <button class="btn" id="mtPlay">▶ Anteprima</button>
+            <button class="btn primary" id="mtExport">🎞 Monta su RunPod</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="slate">
+        <div class="slate-body">
+          <div class="slate-head"><div><small>TIMELINE</small><h2 class="chalk">Sequenza</h2></div>
+            <button class="btn small" id="mtAdd">+ Ciak</button></div>
+          <ol id="mtList" class="tl"></ol>
+
+          <details class="adv">
+            <summary>Titoli</summary>
+            <label>Titolo del film (cartello iniziale)<input id="mtTitle" type="text" placeholder="Es. ENTWINED – Capitolo 1"></label>
+            <label class="check"><input type="checkbox" id="mtEnd" checked> Cartello "Fine" alla chiusura</label>
+          </details>
+          <details class="adv">
+            <summary>Transizioni</summary>
+            <div class="seg3" id="mtTrans">
+              <button data-v="cut">Taglio</button>
+              <button data-v="dissolve" class="active">Dissolvenza</button>
+              <button data-v="black">Nero</button>
+            </div>
+          </details>
+          <details class="adv">
+            <summary>Audio e musica</summary>
+            <label class="check"><input type="checkbox" id="mtKeep" checked> Tieni l'audio delle clip</label>
+            <div class="refrow" style="margin-top:12px">
+              <label class="chipbtn">♪ Scegli musica<input type="file" id="mtMusic" accept="audio/*"></label>
+              <span id="mtMusicName" class="muted small">Nessuna musica</span>
+              <button class="link small hidden" id="mtMusicDel">Togli</button>
+            </div>
+            <label>Volume musica<input id="mtVol" type="range" min="0" max="100" value="60"></label>
+          </details>
+        </div>
+      </div>
+    </div>
+
+    <h2 class="chalk sub">Film montati</h2>
+    <div id="mtFilms" class="gallery"></div>
+  </section>
+</main>
+
+<!-- ===== BARRA IN BASSO (telefono) ===== -->
+<nav class="bottomnav">
+  <button class="tab active" data-view="crea"><i>🎬</i>Crea</button>
+  <button class="tab" data-view="galleria"><i>🎞</i>Galleria</button>
+  <button class="tab" data-view="montaggio"><i>✂️</i>Montaggio</button>
+  <button class="tab" data-view="personaggi"><i>🎭</i>Cast</button>
+</nav>
+
+<!-- ===== FINESTRE ===== -->
+<div class="modal hidden" id="mSettings">
+  <div class="mbox">
+    <div class="mhead"><h2 class="chalk">Impostazioni</h2><button class="x" data-close>✕</button></div>
+
+    <details class="sec" id="secKey">
+      <summary><span>Collegamento RunPod</span><em id="sumKey">non collegato</em></summary>
+      <p class="muted small">La stessa chiave API di Fonica Infinity. Viene cifrata con la tua password e resta solo su questo dispositivo.</p>
+      <label>Chiave API RunPod
+        <div class="pw"><input id="setKey" type="password" placeholder="rpa_..." autocomplete="off"><button class="btn small" id="showKey" type="button">Mostra</button></div>
+      </label>
+      <div class="actions">
+        <button class="btn primary" id="saveSet">Salva</button>
+        <button class="btn" id="testKey">Prova chiave</button>
+      </div>
+      <p id="setStatus" class="status"></p>
+    </details>
+
+    <details class="sec" id="secMont">
+      <summary><span>Montaggio su RunPod</span><em id="sumMont">da collegare</em></summary>
+      <p class="muted small">L'ID dell'endpoint serverless "regista-montaggio" (lo trovi nella pagina dell'endpoint su RunPod). Le istruzioni sono nel file LEGGIMI.</p>
+      <label>ID endpoint montaggio<input id="setMont" type="text" placeholder="es. abc123xyz" autocomplete="off"></label>
+      <div class="actions">
+        <button class="btn primary" id="saveMont">Salva</button>
+        <button class="btn" id="testMont">Prova</button>
+      </div>
+      <p id="montStatus" class="status"></p>
+    </details>
+
+    <details class="sec">
+      <summary><span>Password e blocco</span><em>blocco dopo 30 min</em></summary>
+      <label>Password attuale<input id="pwOld" type="password" autocomplete="current-password"></label>
+      <label>Nuova password<input id="pwNew" type="password" autocomplete="new-password"></label>
+      <div class="actions">
+        <button class="btn" id="chgPw">Cambia password</button>
+      </div>
+      <p id="pwStatus" class="status"></p>
+    </details>
+
+    <details class="sec">
+      <summary><span>Spesa</span><em id="sumSpent">0,00 $</em></summary>
+      <p>Totale speso con questa app: <b id="spent">0,00 $</b></p>
+      <p class="muted small">I video su RunPod restano 7 giorni: l'app li salva subito sul dispositivo.</p>
+      <button class="btn small" id="resetSpent">Azzera contatore</button>
+    </details>
+
+    <button class="btn big" id="lockNow">🔒 Blocca l'app</button>
+  </div>
+</div>
+
+<div class="modal hidden" id="mChar">
+  <div class="mbox">
+    <div class="mhead"><h2 class="chalk">Nuovo personaggio</h2><button class="x" data-close>✕</button></div>
+    <p class="muted small">Foto chiara del volto, frontale e con buona luce.</p>
+    <div class="charform">
+      <label class="photo" id="charPick">
+        <div id="charPreview" class="charph"><span>+ Foto</span></div>
+        <input type="file" id="charFile" accept="image/*">
+      </label>
+      <div class="grow">
+        <label>Nome<input id="charName" type="text" placeholder="Es. Elena"></label>
+        <label>Descrizione fissa<input id="charDesc" type="text" placeholder="Es. donna sui 35 anni, capelli rossi corti"></label>
+      </div>
+    </div>
+    <button class="btn primary big" id="charSave">Salva personaggio</button>
+  </div>
+</div>
+
+<div class="modal hidden sheet" id="mJobs">
+  <div class="mbox">
+    <div class="mhead"><h2 class="chalk">In ripresa</h2><button class="x" data-close>✕</button></div>
+    <div id="jobsSheet" class="jobs"></div>
+  </div>
+</div>
+
+<div class="modal hidden" id="mCompare">
+  <div class="mbox wide">
+    <div class="mhead"><h2 class="chalk">Confronto</h2><button class="x" data-close>✕</button></div>
+    <div id="compare" class="compare"></div>
+    <button class="btn big" id="playBoth">▶ Avvia insieme</button>
+  </div>
+</div>
+
+<div class="modal hidden" id="viewer">
+  <div class="mbox wide">
+    <div class="mhead"><h2 class="chalk" id="vTitle">Ciak</h2><button class="x" id="vClose">✕</button></div>
+    <video id="vVideo" controls playsinline></video>
+    <p id="vMeta" class="muted small"></p>
+    <p id="vPrompt" class="vprompt"></p>
+    <div class="actions">
+      <a class="btn small" id="vDl" download>⬇ Scarica</a>
+      <button class="btn small" id="vReuse">↺ Riusa impostazioni</button>
+      <button class="btn small" id="vContinue">⤳ Continua da qui</button>
+      <button class="btn small" id="vToMont">+ Al montaggio</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal hidden" id="mPick">
+  <div class="mbox wide">
+    <div class="mhead"><h2 class="chalk">Scegli i ciak</h2><button class="x" data-close>✕</button></div>
+    <div id="pickGrid" class="gallery pick"></div>
+    <button class="btn primary big" id="pickOk">Aggiungi alla timeline</button>
+  </div>
+</div>
+
+<div id="toast" class="toast"></div>
+<script src="app.js"></script>
+<script src="montaggio.js"></script>
+</body>
+</html>

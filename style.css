@@ -356,3 +356,8 @@ h2.sub{font-size:1.6rem;margin:28px 0 12px}
 #audioInVoice{display:block;margin-top:8px}
 #dubNew{display:block;margin-top:8px}
 @media (max-width:640px){ .libbar .btn{padding:9px 10px;font-size:.88rem} }
+
+/* ---------- logo ---------- */
+.logo-ic{width:30px;height:30px;margin-right:8px;vertical-align:-6px;border-radius:7px}
+.lock-logo{display:block;width:96px;height:96px;margin:4px auto 10px;border-radius:22px;box-shadow:0 8px 30px rgba(0,0,0,.6)}
+@media (max-width:640px){ .logo-ic{width:26px;height:26px;margin-right:6px} }

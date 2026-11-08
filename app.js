@@ -38,14 +38,14 @@ const MODELS = {
     }
   },
   kling: {
-    name: 'Kling O1', desc: 'Personaggi sempre uguali tra una scena e l\'altra', neg: true, audio: false,
-    ratios: ['16:9', '9:16', '1:1'], durations: [3, 5, 8, 10], res: [], defRes: null,
-    hint: 'Scegli almeno un personaggio o una foto.',
+    name: 'Kling O1', desc: 'Segue il movimento di un tuo ciak e ci mette i tuoi personaggi', neg: true, audio: false, needsVideo: true,
+    ratios: ['16:9', '9:16', '1:1'], durations: [3, 4, 5, 6, 7, 8, 9, 10], res: [], defRes: null,
+    hint: 'Scegli i personaggi (o una foto) e un ciak di riferimento.',
     endpoint: () => 'kling-video-o1-r2v',
     price: o => 0.112 * o.duration,
     input(o) {
       const images = [...(o.startImg ? [o.startImg] : []), ...o.charImgs].slice(0, 10);
-      const inp = { prompt: o.prompt, images, aspect_ratio: o.ratio, duration: o.duration, seed: -1, enable_prompt_expansion: false };
+      const inp = { prompt: o.prompt, images, video: o.refVideo, aspect_ratio: o.ratio, duration: o.duration, seed: -1, enable_prompt_expansion: false };
       if (o.negative) inp.negative_prompt = o.negative;
       return inp;
     }
@@ -231,7 +231,21 @@ function setEngine(e, keepVals) {
   $('#audioWrap').classList.toggle('hidden', !m.audio);
   $('#negWrap').classList.toggle('hidden', !m.neg);
   $('#refHint').textContent = m.hint;
+  $('#refVidWrap').classList.toggle('hidden', !m.needsVideo);
+  if (m.needsVideo) fillRefVideos(keepVals?.refVideoId);
   updateCost();
+}
+function fillRefVideos(keep) {
+  const sel = $('#refVideo'), old = keep ?? sel.value;
+  sel.innerHTML = S.clips.length
+    ? '<option value="">— scegli un ciak —</option>' + S.clips.map(c => `<option value="${c.id}">Ciak ${c.take || '–'} · ${esc(c.settings.prompt).slice(0, 40)}</option>`).join('')
+    : '<option value="">Prima gira un ciak con Wan o Seedance</option>';
+  if (S.clips.some(c => c.id === old)) sel.value = old;
+}
+async function videoSource(c) {
+  if (c.url && Date.now() - c.created < 6.5 * 864e5) return c.url;
+  if (c.blob && c.blob.size < 7 * 1024 * 1024) return await new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(r.result); r.onerror = rej; r.readAsDataURL(c.blob); });
+  throw new Error(`Il ciak ${c.take || ''} è troppo vecchio o pesante: scegline uno più recente`);
 }
 $$('#engine button').forEach(b => b.onclick = () => setEngine(b.dataset.v));
 ['#ratio', '#duration', '#res'].forEach(s => $(s).onchange = updateCost);
@@ -246,7 +260,8 @@ function currentOpts() {
     negative: m.neg ? $('#negative').value.trim() : '',
     ratio: $('#ratio').value, duration: +$('#duration').value,
     res: m.res.length ? $('#res').value : '720p', audio: $('#audio').checked,
-    startImg: S.startImg, charImgs: chars.map(c => c.img), charIds: chars.map(c => c.id)
+    startImg: S.startImg, charImgs: chars.map(c => c.img), charIds: chars.map(c => c.id),
+    refVideoId: m.needsVideo ? $('#refVideo').value : ''
   };
 }
 function updateCost() {
@@ -283,6 +298,11 @@ $('#goBtn').onclick = async () => {
   const o = currentOpts(); const m = MODELS[o.engine];
   if (!o.rawPrompt) { toast('Scrivi la descrizione della scena'); $('#prompt').focus(); return; }
   if (o.engine === 'kling' && !o.startImg && !o.charImgs.length) { toast('Kling vuole almeno un personaggio o una foto'); return; }
+  if (m.needsVideo) {
+    const rc = S.clips.find(c => c.id === o.refVideoId);
+    if (!rc) { toast('Scegli il ciak di riferimento per Kling'); $('#refVideo').focus(); return; }
+    try { o.refVideo = await videoSource(rc); } catch (e) { toast(e.message, 5000); return; }
+  }
   const est = m.price(o);
   if (est >= 3 && !confirm(`Questa clip costa circa ${money(est)}. Procedo?`)) return;
   const btn = $('#goBtn'); btn.disabled = true; btn.textContent = 'Invio al set…';
@@ -293,7 +313,7 @@ $('#goBtn').onclick = async () => {
     const take = nextTake(); ls('take', String(take)); showTake();
     const job = {
       id: uid(), jobId: r.id, endpoint, status: r.status || 'IN_QUEUE', created: Date.now(), est, take,
-      settings: { engine: o.engine, prompt: o.rawPrompt, negative: o.negative, ratio: o.ratio, duration: o.duration, res: o.res, audio: o.audio, charIds: o.charIds },
+      settings: { engine: o.engine, prompt: o.rawPrompt, negative: o.negative, ratio: o.ratio, duration: o.duration, res: o.res, audio: o.audio, charIds: o.charIds, refVideoId: o.refVideoId },
       fullPrompt: o.prompt
     };
     S.jobs.unshift(job); saveJobs(); renderJobs(); poll(job);
@@ -386,6 +406,7 @@ async function saveClip(job, url, cost) {
   const clip = { id: job.id, take: job.take, url, blob, created: Date.now(), cost: typeof cost === 'number' ? cost : job.est, settings: job.settings, fullPrompt: job.fullPrompt, fav: false };
   await dbPut('clips', clip);
   S.clips.unshift(clip);
+  if (MODELS[S.engine].needsVideo) fillRefVideos();
   ls('spent', String((parseFloat(ls('spent')) || 0) + clip.cost)); showSpent();
 }
 
@@ -452,7 +473,7 @@ $('#vClose').onclick = () => closeM($('#viewer'));
 $('#vReuse').onclick = () => { loadSettings(viewing.settings); closeM($('#viewer')); go('crea'); toast('Impostazioni ricaricate'); };
 
 function loadSettings(s) {
-  setEngine(s.engine, { ratio: s.ratio, duration: s.duration, res: s.res });
+  setEngine(s.engine, { ratio: s.ratio, duration: s.duration, res: s.res, refVideoId: s.refVideoId });
   $('#prompt').value = s.prompt; if (s.negative) $('#negative').value = s.negative;
   $('#audio').checked = s.audio !== false;
   S.selChars = new Set((s.charIds || []).filter(id => S.chars.some(c => c.id === id)));

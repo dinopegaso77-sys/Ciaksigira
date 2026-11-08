@@ -48,13 +48,15 @@ $('#voGo').onclick = async () => {
   try {
     const r = await rp('/minimax-speech-02-hd/run', { method: 'POST', body: JSON.stringify({ input: { prompt: text, voice_id: voice, speed, volume: 1, pitch: 0, emotion, english_normalization: false } }) });
     let out = r.status === 'COMPLETED' ? r.output : null;
-    for (let n = 0; !out && n < 60; n++) {
+    for (let n = 0; out == null && n < 80; n++) {
       await new Promise(res => setTimeout(res, 2500));
       const s = await rp(`/minimax-speech-02-hd/status/${r.id}`);
       if (s.status === 'COMPLETED') out = s.output;
       else if (['FAILED', 'CANCELLED', 'TIMED_OUT'].includes(s.status)) throw new Error(traduciErrore(s.error || s.status));
     }
-    if (!out || !out.audio_url) throw new Error('RunPod non ha restituito l\'audio');
+    const audioUrlOut = out && (typeof out === 'string' ? out : (out.audio_url || out.result || out.url || out.audio || (out.output && (out.output.audio_url || out.output.result))));
+    if (!audioUrlOut) throw new Error('RunPod non ha restituito l\'audio. Risposta: ' + JSON.stringify(out || {}).slice(0, 300));
+    if (typeof out === 'object') out.audio_url = audioUrlOut; else out = { audio_url: audioUrlOut };
     const cost = typeof out.cost === 'number' ? out.cost : text.length * VOICE_PRICE;
     ls('spent', String((parseFloat(ls('spent')) || 0) + cost)); showSpent();
     const label = VOICES.find(v => v[0] === voice)[1];

@@ -211,7 +211,7 @@ function openUse(key) {
   const A = {
     video: [['ref', '🎞 Usa come ciak di riferimento (movimento)'], ['mont', '✂️ Aggiungi al montaggio'], ['dub', '🎤 Aggiungi voce o audio'], ['last', '⤳ Continua da qui (ultimo fotogramma)']],
     image: [['start', '📷 Usa come foto di partenza'], ['mont', '✂️ Aggiungi al montaggio'], ['char', '🎭 Crea un personaggio da questa foto']],
-    audio: [['music', '♪ Musica del film (montaggio)'], ['talk', '🎤 Voce o canzone per InfiniteTalk']]
+    audio: [['voicemont', '🎤 Voce nel montaggio'], ['music', '♪ Musica del film (montaggio)'], ['talk', '🗣 Voce o canzone per InfiniteTalk']]
   }[i.kind] || [];
   $('#useActs').innerHTML = [...A, ['dl', '⬇ Scarica'], ['del', '🗑 Elimina dall\'archivio']]
     .map(([a, l]) => `<button class="btn ${a === 'del' ? 'danger' : ''}" data-act="${a}">${l}</button>`).join('');
@@ -223,7 +223,7 @@ async function useAction(a, btn) {
   const done = msg => { closeM($('#mUse')); if (msg) toast(msg); };
   if (a === 'dub') { done(); openDub({ item: i }); return; }
   if (a === 'start') { S.startImg = url; showStart(); done(); go('crea'); toast('Foto di partenza impostata'); }
-  if (a === 'mont') { if (!MT.proj) mtLoad(); MT.proj.items.push('lib:' + i.key); mtSave(); done(`Aggiunto al montaggio (${MT.proj.items.length} in timeline)`); }
+  if (a === 'mont') { const n = edAddVideo('lib:' + i.key); done(`Aggiunto al montaggio (${n} nella traccia video)`); }
   if (a === 'ref') {
     if (!MODELS[S.engine].needs.video) setEngine('klingmc');
     fillRefVideos('lib:' + i.key); $('#refVideo').value = 'lib:' + i.key; updateCost();
@@ -239,10 +239,8 @@ async function useAction(a, btn) {
     $('#charPreview').innerHTML = `<img src="${charImg}" alt="">`; $('#charName').value = '';
     done(); go('personaggi'); openM('mChar');
   }
-  if (a === 'music') {
-    MT.music = { id: 'music', name: i.name, key: i.key }; await dbPut('audio', MT.music);
-    done('Musica del film impostata'); if (!MT.proj) mtLoad(); go('montaggio');
-  }
+  if (a === 'voicemont') { edAddAudio('voice', { key: i.key }, i.name, LIB.meta[i.key]?.dur); done('Voce aggiunta al montaggio'); go('montaggio'); }
+  if (a === 'music') { edAddAudio('music', { key: i.key }, i.name, LIB.meta[i.key]?.dur); done('Musica aggiunta al montaggio'); go('montaggio'); }
   if (a === 'talk') {
     S.audioIn = url; S.audioName = i.name; S.audioDur = LIB.meta[i.key]?.dur || 0;
     const au = new Audio(url); au.onloadedmetadata = () => { S.audioDur = Math.round(au.duration) || 0; };

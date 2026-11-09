@@ -16,7 +16,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Kalam:wght@400;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=1.9.3">
+<link rel="stylesheet" href="style.css?v=2.0">
 </head>
 <body>
 
@@ -184,64 +184,51 @@
     <div id="chars" class="chars"></div>
   </section>
 
-  <!-- ===== MONTAGGIO ===== -->
+  <!-- ===== MONTAGGIO: EDITOR A TRACCE ===== -->
   <section id="view-montaggio" class="view">
     <div class="pagehead">
       <h1 class="chalk">Montaggio</h1>
-      <button class="btn small" id="mtNew">Nuovo film</button>
+      <div class="ed-head"><button class="btn small" id="edFilm">⚙︎ Film</button><button class="btn small" id="edNew">Nuovo</button></div>
     </div>
-    <div class="grid-mont">
-      <div class="slate">
-        <div class="sticks"><span></span><span></span></div>
-        <div class="slate-body">
-          <div class="slate-head">
-            <div><small>FILM</small><h2 class="chalk" id="mtTitleShow">Senza titolo</h2></div>
-            <div class="take"><small>DURATA</small><b id="mtDur">0:00</b></div>
-          </div>
-          <div class="screen"><video id="mtVideo" playsinline controls></video>
-            <div class="screen-empty" id="mtEmpty">Aggiungi dei ciak alla timeline<br>per vedere il film qui</div>
-          </div>
-          <div class="prog big hidden" id="mtProgWrap"><i id="mtProg"></i></div>
-          <p class="muted small" id="mtStatus"></p>
-          <div class="actions two">
-            <button class="btn" id="mtPlay">▶ Anteprima</button>
-            <button class="btn primary" id="mtExport">🎞 Monta su RunPod</button>
-          </div>
+    <div class="ed-top">
+      <div class="ed-stage-wrap">
+        <div class="stage" id="stage">
+          <div id="stageLayers" class="stage-layers"></div>
+          <div id="pvText" class="pv-text"></div>
+          <video id="pvRender" class="hidden" controls playsinline></video>
+          <div class="stage-empty" id="stageEmpty">Aggiungi video, foto o cartelli<br>con i pulsanti qui sotto</div>
         </div>
-      </div>
-
-      <div class="slate">
-        <div class="slate-body">
-          <div class="slate-head"><div><small>TIMELINE</small><h2 class="chalk">Sequenza</h2></div>
-            <button class="btn small" id="mtAdd">+ Ciak</button></div>
-          <ol id="mtList" class="tl"></ol>
-
-          <details class="adv">
-            <summary>Titoli</summary>
-            <label>Titolo del film (cartello iniziale)<input id="mtTitle" type="text" placeholder="Es. ENTWINED – Capitolo 1"></label>
-            <label class="check"><input type="checkbox" id="mtEnd" checked> Cartello "Fine" alla chiusura</label>
-          </details>
-          <details class="adv">
-            <summary>Transizioni</summary>
-            <div class="seg3" id="mtTrans">
-              <button data-v="cut">Taglio</button>
-              <button data-v="dissolve" class="active">Dissolvenza</button>
-              <button data-v="black">Nero</button>
-            </div>
-          </details>
-          <details class="adv">
-            <summary>Audio e musica</summary>
-            <label class="check"><input type="checkbox" id="mtKeep" checked> Tieni l'audio delle clip</label>
-            <div class="refrow" style="margin-top:12px">
-              <label class="chipbtn">♪ Scegli musica<input type="file" id="mtMusic" accept="audio/*"></label>
-              <span id="mtMusicName" class="muted small">Nessuna musica</span>
-              <button class="link small hidden" id="mtMusicDel">Togli</button>
-            </div>
-            <label>Volume musica<input id="mtVol" type="range" min="0" max="100" value="60"></label>
-          </details>
+        <div class="transport">
+          <button class="ic tp" id="edBack" title="Inizio">⏮</button>
+          <button class="ic tp play" id="edPlay" title="Riproduci">▶</button>
+          <span id="edTime" class="edtime">0:00,0 / 0:00,0</span>
+          <button class="btn small hidden" id="edBackToEdit">◀ Torna all'anteprima dal vivo</button>
+          <span class="tp-sp"></span>
+          <button class="btn small" id="edExact" title="Montaggio veloce a bassa qualità su RunPod">⚡ Anteprima esatta</button>
+          <button class="btn small primary" id="edExport">🎞 Monta il film</button>
         </div>
+        <div class="prog big hidden" id="edProgWrap"><i></i></div>
+        <p class="muted small" id="edStatus"></p>
       </div>
+      <aside class="slate ed-insp desk" id="inspSide"><div class="slate-body" id="inspSideBody"></div></aside>
     </div>
+
+    <div class="ed-tools">
+      <button class="tool" id="addVideo">🎬 <span>Video/foto</span></button>
+      <button class="tool" id="addCard">🪧 <span>Cartello</span></button>
+      <button class="tool" id="addText">🔤 <span>Testo</span></button>
+      <button class="tool" id="addVoice">🎤 <span>Voce</span></button>
+      <button class="tool" id="addMusic">🎵 <span>Musica</span></button>
+      <span class="tool-sep"></span>
+      <button class="tool zoom" id="zoomOut" title="Riduci">－</button><button class="tool zoom" id="zoomIn" title="Ingrandisci">＋</button>
+    </div>
+    <div class="pal-wrap"><span class="pal-l">Transizioni</span><div class="trans-pal" id="transPal"></div></div>
+    <div id="selBar" class="selbar hidden"><span id="selName"></span><button class="btn small" id="selEdit">✎ Modifica</button><button class="btn small" id="selOff">✕</button></div>
+    <div class="tl2-wrap">
+      <div class="tl2-labels"><div class="lb-r"></div><div class="lb lv">🎬<i>Video</i></div><div class="lb lt">🔤<i>Testi</i></div><div class="lb la">🎤<i>Voce</i></div><div class="lb lm">🎵<i>Musica</i></div></div>
+      <div class="tl2" id="tl2"><div class="tl2-in" id="tl2in"></div></div>
+    </div>
+    <p class="muted small ed-hint">Tocca un elemento per selezionarlo, poi trascinalo o allunga i bordi ‖. Trascina una transizione sul rombo ◇ tra due clip. Tocca il righello per spostarti nel tempo.</p>
 
     <h2 class="chalk sub">Film montati</h2>
     <div id="mtFilms" class="gallery"></div>
@@ -285,6 +272,14 @@
       <p id="montStatus" class="status"></p>
     </details>
 
+    <details class="sec" id="secVoce">
+      <summary><span>Voce clonata su RunPod</span><em id="sumVoce">facoltativa</em></summary>
+      <p class="muted small">L'ID dell'endpoint GPU "Ciaksigira-voce" (Chatterbox). Serve solo per creare voci dalla tua registrazione; le istruzioni sono nel LEGGIMI.</p>
+      <label>ID endpoint voce<input id="setVoce" type="text" placeholder="es. xyz789abc" autocomplete="off"></label>
+      <div class="actions"><button class="btn primary" id="saveVoce">Salva</button><button class="btn" id="testVoce">Prova</button></div>
+      <p id="voceStatus" class="status"></p>
+    </details>
+
     <details class="sec" id="secR2">
       <summary><span>Archivio file (R2)</span><em id="sumR2">non attivo</em></summary>
       <p class="muted small">Le chiavi R2 non si mettono qui: vanno nelle variabili dell'endpoint di montaggio su RunPod (vedi LEGGIMI). Qui controlli solo che il collegamento funzioni.</p>
@@ -310,7 +305,7 @@
     </details>
 
     <button class="btn big" id="lockNow">🔒 Blocca l'app</button>
-    <p class="muted small ver">Ciak si gira · versione <b id="appVer">1.9.3</b></p>
+    <p class="muted small ver">Ciak si gira · versione <b id="appVer">2.0</b></p>
   </div>
 </div>
 
@@ -355,14 +350,28 @@
 
 <div class="modal hidden" id="mVoice">
   <div class="mbox">
-    <div class="mhead"><h2 class="chalk">Crea voce AI</h2><button class="x" data-close>✕</button></div>
+    <div class="mhead"><h2 class="chalk">Crea voce</h2><button class="x" data-close>✕</button></div>
+    <div class="seg2" id="voMode"><button data-m="ai" class="active">🤖 Voci AI</button><button data-m="clone">🎙 Le mie voci</button></div>
     <label>Cosa deve dire
       <textarea id="voText" rows="5" placeholder="Scrivi qui le battute, in italiano o in un'altra lingua. La punteggiatura conta: virgole e punti fanno le pause."></textarea>
     </label>
-    <div class="row3">
+    <div class="row3" id="voAiPanel">
       <label>Voce<select id="voVoice"></select></label>
       <label>Emozione<select id="voEmo"></select></label>
       <label>Velocità <span id="voSpeedVal" class="muted">1,0×</span><input id="voSpeed" type="range" min="0.5" max="2" step="0.1" value="1"></label>
+    </div>
+    <div id="voClonePanel" class="hidden">
+      <div class="clone-pick">
+        <label>Voce clonata<select id="voClone"></select></label>
+        <button class="btn" id="voCloneNew">＋ Nuova voce</button>
+        <button class="btn" id="voCloneDel" title="Elimina questa voce">🗑</button>
+      </div>
+      <div class="row3">
+        <label>Lingua<select id="voLang"><option value="it">Italiano</option><option value="en">English</option><option value="fr">Français</option><option value="es">Español</option><option value="de">Deutsch</option></select></label>
+        <label>Espressività <span id="voExagVal" class="muted">0,5</span><input id="voExag" type="range" min="0.25" max="1.5" step="0.05" value="0.5"></label>
+        <label>Ritmo <span id="voPaceVal" class="muted">normale</span><input id="voPace" type="range" min="0.2" max="0.8" step="0.05" value="0.5"></label>
+      </div>
+      <p class="muted small" id="voCloneNote"></p>
     </div>
     <details class="adv"><summary>Nome del file</summary><label>Nome<input id="voName" type="text" placeholder="Es. narratore-scena-1"></label></details>
     <div class="cost" id="voCost"></div>
@@ -377,6 +386,29 @@
       </div>
       <p class="muted small">La voce è salvata in "I miei file": la ritrovi anche per il montaggio.</p>
     </div>
+  </div>
+</div>
+
+<div class="modal hidden" id="mVoceNew">
+  <div class="mbox">
+    <div class="mhead"><h2 class="chalk">Nuova voce clonata</h2><button class="x" data-close>✕</button></div>
+    <div class="row2">
+      <label>Nome della voce<input id="vnName" type="text" placeholder="Es. Dino narratore" maxlength="40"></label>
+      <label>Lingua del campione<select id="vnLang"><option value="it">Italiano</option><option value="en">English</option></select></label>
+    </div>
+    <p class="muted small">Leggi questo testo con calma e con la tua voce naturale, in una stanza silenziosa, col telefono a una spanna dalla bocca (servono almeno 10 secondi, meglio 20–30):</p>
+    <blockquote class="readme" id="vnText"></blockquote>
+    <div class="vn-rec">
+      <button class="btn primary" id="vnRec">● Registra</button>
+      <span class="rec-time" id="vnTime">0:00</span>
+      <span class="muted small">oppure</span>
+      <label class="btn" for="vnFile">📁 Carica un audio</label>
+      <input type="file" id="vnFile" accept="audio/*,video/mp4">
+    </div>
+    <audio id="vnPrev" controls class="hidden"></audio>
+    <label class="check"><input type="checkbox" id="vnOk"> È la mia voce, oppure la persona mi ha dato il consenso a clonarla.</label>
+    <button class="btn primary big" id="vnSave" disabled>Salva la voce</button>
+    <p class="muted small" id="vnStatus"></p>
   </div>
 </div>
 
@@ -437,19 +469,65 @@
   </div>
 </div>
 
+<div class="modal hidden sheet" id="mInsp">
+  <div class="mbox">
+    <div class="mhead"><h2 class="chalk">Modifica</h2><button class="x" data-close>✕</button></div>
+    <div id="inspSheet"></div>
+  </div>
+</div>
+
+<div class="modal hidden" id="mAddAudio">
+  <div class="mbox">
+    <div class="mhead"><h2 class="chalk" id="aaTitle">Aggiungi audio</h2><button class="x" data-close>✕</button></div>
+    <p class="muted small">Dai tuoi file:</p>
+    <div id="aaList" class="aalist"></div>
+    <div class="actions">
+      <button class="btn" id="aaVoice">🗣 Crea voce AI</button>
+      <button class="btn" id="aaRec">🎙 Registra</button>
+      <label class="btn">⬆ Carica dal telefono<input type="file" id="aaFile" accept="audio/*"></label>
+    </div>
+  </div>
+</div>
+
 <div class="modal hidden" id="mPick">
   <div class="mbox wide">
-    <div class="mhead"><h2 class="chalk">Scegli i ciak</h2><button class="x" data-close>✕</button></div>
+    <div class="mhead"><h2 class="chalk">Scegli video e foto</h2><button class="x" data-close>✕</button></div>
     <div id="pickGrid"></div>
-    <button class="btn primary big" id="pickOk">Aggiungi alla timeline</button>
+    <button class="btn primary big" id="pickOk">Aggiungi alla traccia video</button>
+  </div>
+</div>
+
+<div class="modal hidden" id="mSubs">
+  <div class="mbox wide">
+    <div class="mhead"><h2 class="chalk">Sottotitoli</h2><button class="x" data-close>✕</button></div>
+    <div class="subs-top">
+      <video id="subVideo" controls playsinline preload="metadata"></video>
+      <div class="subs-steps">
+        <p class="muted small" id="subFilmName"></p>
+        <button class="btn" id="subTrans">🎙 1 · Trascrivi l'italiano</button>
+        <button class="btn" id="subTransl">🌍 2 · Traduci in inglese</button>
+        <p class="muted small" id="subStatus">RunPod ascolta il film e scrive i sottotitoli; poi li puoi correggere qui sotto.</p>
+      </div>
+    </div>
+    <div class="subs-head"><span>Tempo</span><span>🇮🇹 Italiano</span><span>🇬🇧 English</span></div>
+    <div id="subList" class="sublist"></div>
+    <button class="btn small" id="subAdd">＋ Aggiungi una riga al punto del video</button>
+    <div class="subs-out">
+      <div class="actions"><button class="btn small" id="subSrtIt">⬇ .srt italiano</button><button class="btn small" id="subSrtEn">⬇ .srt inglese</button></div>
+      <label>Scritte dentro il video
+        <select id="subBurn"><option value="">Nessuna — solo tracce IT/EN da attivare nel lettore</option><option value="it">Italiano sempre visibile</option><option value="en">Inglese sempre visibile</option></select>
+      </label>
+      <button class="btn primary big" id="subGo">🎬 Crea il film sottotitolato</button>
+    </div>
   </div>
 </div>
 
 <div id="toast" class="toast"></div>
-<script src="models.js?v=1.9.3"></script>
-<script src="app.js?v=1.9.3"></script>
-<script src="montaggio.js?v=1.9.3"></script>
-<script src="libreria.js?v=1.9.3"></script>
-<script src="voce.js?v=1.9.3"></script>
+<script src="models.js?v=2.0"></script>
+<script src="app.js?v=2.0"></script>
+<script src="montaggio.js?v=2.0"></script>
+<script src="libreria.js?v=2.0"></script>
+<script src="voce.js?v=2.0"></script>
+<script src="sottotitoli.js?v=2.0"></script>
 </body>
 </html>

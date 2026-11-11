@@ -341,7 +341,7 @@ function rgFind(p, shId) { for (const pt of p.parts) { const s = pt.shots.find(x
 function rgShotMut(pid, shId, fn) { return rgMut(pid, p => { const s = rgFind(p, shId); if (s) fn(s, p); }); }
 const hashStr = s => { let h = 5381; for (let i = 0; i < s.length; i++) h = ((h << 5) + h + s.charCodeAt(i)) | 0; return (h >>> 0).toString(36); };
 function rgNewProj() {
-  return { id: uid(), created: Date.now(), idea: '', length: 60, genre: 'Drammatico realistico', ratio: '16:9', engine: 'wan', audio: false, dialog: 'pochi', lipsync: true, script: null, bible: null, parts: [] };
+  return { id: uid(), created: Date.now(), idea: '', length: 60, genre: 'Drammatico realistico', ratio: '16:9', engine: 'wan', audio: false, dialog: 'pochi', lipsync: true, script: null, nChars: 0, castSel: [], bible: null, parts: [] };
 }
 const GENRES = ['Drammatico realistico', 'Commedia', 'Thriller', 'Noir', 'Romantico', 'Avventura', 'Fantascienza realistica', 'Horror (suggerito)', 'Documentario', 'Spot pubblicitario', 'Videoclip narrativo'];
 const LENGTHS = [[30, '30 secondi'], [60, '1 minuto'], [90, '1 minuto e mezzo'], [120, '2 minuti'], [180, '3 minuti']];
@@ -408,12 +408,18 @@ function renderRegia() {
   box.innerHTML = `<div class="rg-left">
   <div class="rg-card rg-idea">
     <div class="rg-step"><b>1</b><span>L'idea</span></div>
+    <div class="rg-who first">
+      <label>Quanti personaggi <b class="req">*</b><select id="rgN" class="${p.nChars ? '' : 'need'}"><option value="0" ${p.nChars ? '' : 'selected'} disabled>Scegli…</option>${[1, 2, 3, 4].map(v => `<option value="${v}" ${p.nChars == v ? 'selected' : ''}>${v}</option>`).join('')}</select></label>
+      ${S.chars.length ? `<div class="rg-castsel"><span>Dal Cast (facoltativo)</span><div class="chipset">${S.chars.map(c => `<button class="chip cc ${(p.castSel || []).includes(c.id) ? 'on' : ''}" data-csel="${c.id}"><img src="${c.img}" alt="">${esc(c.name)}</button>`).join('')}</div></div>` : '<p class="muted small">Il Cast è vuoto: i personaggi li inventa il Regista e poi li crei con l\'intervista.</p>'}
+    </div>
+    <p class="muted small rg-whonote">${rgWhoNote(p)}</p>
     <div class="rg-script">
       ${p.script ? `<span class="rg-pdf">📄 <b>${esc(p.script.name)}</b> · ${p.script.pages || '?'} pagine · ${Math.round(p.script.text.length / 1000)}k caratteri</span><button class="btn small" id="rgPdfDel">Togli</button>`
         : `<label class="btn small" for="rgPdf">📄 Carica copione o master (PDF)</label><span class="muted small">la storia, i personaggi e i dialoghi verranno presi da lì</span>`}
       <input type="file" id="rgPdf" accept="application/pdf,.pdf">
     </div>
     <label class="nolabel"><textarea id="rgIdea" rows="4" placeholder="Racconta la tua idea in poche righe, in italiano. Es. Un padre e il figlio ormai adulto svuotano la vecchia casa di famiglia e ritrovano la bicicletta con cui lui imparò a pedalare.">${esc(p.idea)}</textarea></label>
+
     <div class="rg-opts">
       <label>Durata<select id="rgLen">${LENGTHS.map(([v, t]) => `<option value="${v}" ${p.length == v ? 'selected' : ''}>${t}</option>`).join('')}</select></label>
       <label>Genere<select id="rgGenre">${GENRES.map(g => `<option ${p.genre === g ? 'selected' : ''}>${g}</option>`).join('')}</select></label>
@@ -426,7 +432,7 @@ function renderRegia() {
     <label class="rg-budget">Budget massimo del film ($) <input id="rgBudget" type="number" min="0" step="1" inputmode="decimal" placeholder="nessun limite" value="${p.budget || ''}"></label>
     <label class="check"><input type="checkbox" id="rgLip" ${p.lipsync !== false ? 'checked' : ''}> Labbra sincronizzate quando un personaggio parla in camera (InfiniteTalk)</label>
     <label class="check"><input type="checkbox" id="rgAudio" ${p.audio ? 'checked' : ''}> Suoni d'ambiente nei ciak (la musica la metti tu al montaggio)</label>
-    <button class="btn primary big" id="rgWrite">${hasB ? '↻ Riscrivi tutto da capo' : '🎬 Scrivi la storia'} <small>≈ 0,05 $</small></button>
+    <button class="btn primary big ${p.nChars ? '' : 'off'}" id="rgWrite">${hasB ? '↻ Riscrivi tutto da capo' : '🎬 Scrivi la storia'} <small>≈ 0,05 $</small></button>
     ${RG.cur !== '__draft' ? '<button class="linkbtn" id="rgDel">Elimina questa regia</button>' : ''}
   </div>
   <div id="rgThink"></div>
@@ -511,6 +517,13 @@ function rgPartHtml(p, pt, pi) {
     </div>
   </div>`;
 }
+function rgWhoNote(p) {
+  const sel = (p.castSel || []).map(id => S.chars.find(c => c.id === id)).filter(Boolean).map(c => c.name);
+  const n = p.nChars || 0;
+  if (!n) return 'Prima di tutto scegli quanti personaggi avrà il film: il Regista non potrà aggiungerne altri.';
+  const extra = n - sel.length;
+  return `${n} personagg${n === 1 ? 'io' : 'i'}${sel.length ? ': ' + sel.join(', ') : ''}${extra > 0 ? `${sel.length ? ' e ' : ', '}${extra} invent${extra === 1 ? 'ato' : 'ati'} dal Regista` : ''}. In ogni inquadratura ce ne saranno al massimo 2.`;
+}
 function rgWireIdea(p) {
   const upd = () => {
     p.idea = $('#rgIdea').value; p.length = +$('#rgLen').value; p.genre = $('#rgGenre').value; p.ratio = $('#rgRatio').value;
@@ -518,6 +531,19 @@ function rgWireIdea(p) {
     if (rgList().some(x => x.id === p.id)) rgSave(p);
   };
   ['#rgIdea', '#rgLen', '#rgGenre', '#rgRatio', '#rgAudio', '#rgDialog', '#rgLip', '#rgBudget'].forEach(s => $(s).addEventListener('change', upd));
+  const whoNote = () => { const el = $('.rg-whonote'); if (el) el.textContent = rgWhoNote(p); };
+  $('#rgN').onchange = () => {
+    p.nChars = +$('#rgN').value; const sel = (p.castSel || []).length;
+    if (p.nChars && sel > p.nChars) { p.castSel = p.castSel.slice(0, p.nChars); $$('[data-csel]').forEach(b => b.classList.toggle('on', p.castSel.includes(b.dataset.csel))); toast(`Tengo solo ${p.nChars} dal Cast`); }
+    $('#rgN').classList.toggle('need', !p.nChars); $('#rgWrite').classList.toggle('off', !p.nChars); upd(); whoNote();
+  };
+  $$('[data-csel]').forEach(b => b.onclick = () => {
+    const id = b.dataset.csel; p.castSel = p.castSel || [];
+    p.castSel = p.castSel.includes(id) ? p.castSel.filter(x => x !== id) : [...p.castSel, id];
+    if (!p.nChars) { p.nChars = Math.min(4, p.castSel.length); $('#rgN').value = String(p.nChars); $('#rgN').classList.remove('need'); $('#rgWrite').classList.remove('off'); }
+    else if (p.castSel.length > p.nChars) { p.nChars = p.castSel.length; $('#rgN').value = String(Math.min(4, p.nChars)); toast(`Hai scelto ${p.castSel.length} dal Cast: imposto ${p.castSel.length} personaggi`); }
+    b.classList.toggle('on', p.castSel.includes(id)); upd(); whoNote();
+  });
   $('#rgPdf').onchange = async e => { const f = e.target.files[0]; e.target.value = ''; if (f) { upd(); await rgLoadPdf(p, f); } };
   const pd = $('#rgPdfDel'); if (pd) pd.onclick = () => { p.script = null; if (p.dialog === 'copione') p.dialog = 'pochi'; if (rgList().some(x => x.id === p.id)) rgSave(p); renderRegia(); };
   $('#rgIdea').addEventListener('input', upd);
@@ -557,7 +583,7 @@ function rgWireStory(p) {
 }
 function renderRegiaList() { const p = rgProj(); const o = $(`#rgProjects option[value="${RG.cur}"]`); if (o && p && p.bible) o.textContent = p.bible.title; }
 $('#rgProjects').onchange = () => { RG.cur = $('#rgProjects').value; renderRegia(); };
-$('#rgNew').onclick = () => { RG.draft = rgNewProj(); RG.cur = '__draft'; renderRegia(); $('#rgIdea').focus(); };
+$('#rgNew').onclick = () => { RG.draft = rgNewProj(); RG.cur = '__draft'; renderRegia(); $('#rgN').focus(); };
 let rgRefT = 0;
 function regiaRefresh() { clearTimeout(rgRefT); rgRefT = setTimeout(() => { if ($('#view-regista').classList.contains('active') && !document.querySelector('#rgBody :focus')) renderRegia(); }, 400); }
 
@@ -565,6 +591,7 @@ function regiaRefresh() { clearTimeout(rgRefT); rgRefT = setTimeout(() => { if (
 function castBrief() { return S.chars.length ? S.chars.map(c => `- ${c.name}: ${c.look_en || c.desc || 'photo available'}`).join('\n') : '(empty: invent the characters)'; }
 async function rgWrite(p) {
   if (!key()) { toast('Collega prima RunPod'); return openSettings(); }
+  if (!p.nChars) { toast('Prima scegli quanti personaggi avrà il film'); const n = $('#rgN'); if (n) { n.focus(); n.scrollIntoView({ behavior: 'smooth', block: 'center' }); } return; }
   if (p.idea.trim().length < 15 && !p.script) { toast('Racconta l\'idea con qualche parola in più, oppure carica il copione in PDF'); return $('#rgIdea').focus(); }
   if (p.bible && !confirm('Riscrivere tutto da capo? Storia, personaggi e inquadrature verranno sostituiti (i ciak già girati restano in Galleria).')) return;
   if (!rgList().some(x => x.id === p.id)) { rgSave(p); RG.cur = p.id; RG.draft = null; }
@@ -589,7 +616,8 @@ AVAILABLE CAST (use these exact names when they fit; invent others only if neede
 ${castBrief()}
 
 Rules:
-- Max 3 recurring characters and max 3 locations. No crowds, no on-screen text, no complex fights or intertwined bodies, no fast action.
+- ${rgCharRule(p)}
+- Max 3 locations. Never more than 2 characters in the same shot. No crowds, no on-screen text, no complex fights or intertwined bodies, no fast action.
 - Show emotions through simple physical actions, looks and light, not dialogue.
 - Split the film into consecutive parts of 12-25 seconds covering exactly 0..${p.length} s with no gaps.
 - Each character gets one fixed look_en (apparent age, build, face, hair, one outfit) reused identically in every shot.
@@ -597,7 +625,13 @@ Rules:
 
 JSON schema:
 {"title":"","logline":"","story":"5-8 sentences","themes":"emotions and themes in Italian","look":{"style_en":"","palette_en":"","lighting_en":"","camera_en":""},"characters":[{"name":"","cast":"exact cast name or empty","role":"","gender":"m|f","age":30,"voice":"Italian, 3-6 words describing the voice","look_en":""}],"locations":[{"name":"","look_en":""}],"parts":[{"title":"","start":0,"end":15,"summary":"3-5 Italian sentences: what we SEE"}],"rating":{"level":"tutti|maturo|violento|esplicito","notes":"Italian, one sentence"}}`;
-    const B = await llmJSON(sys, usr, 3500, s => { steps[0].d = s === 'IN_QUEUE' ? 'RunPod accende il modello di testo…' : 'tema, tono ed emozioni della storia'; rgThinkRender(); });
+    let B = await llmJSON(sys, usr, 3500, s => { steps[0].d = s === 'IN_QUEUE' ? 'RunPod accende il modello di testo…' : 'tema, tono ed emozioni della storia'; rgThinkRender(); });
+    // controllo: numero e nomi dei personaggi come scelto dall'utente (una sola correzione, costa < 0,01 $)
+    const bad = rgCharCheck(p, B);
+    if (bad) {
+      steps[1].d = 'correggo: ' + bad; rgThinkRender();
+      try { const B2 = await llmJSON(sys, usr + `\n\nYOUR PREVIOUS ANSWER WAS WRONG: ${bad}. Fix it and reply with the full JSON again.`, 3500); if (!rgCharCheck(p, B2)) B = B2; } catch (e) { }
+    }
     steps.forEach(s => s.st = 'done'); steps[0].d = B.themes || steps[0].d; rgThinkRender();
     (B.characters || []).forEach((c, k) => { const m = S.chars.find(x => x.name.toLowerCase() === String(c.cast || c.name).toLowerCase()); c.castId = m ? m.id : null; c.voiceId = (m && m.voiceId) || autoVoice(c, k); if (m && m.look_en) c.look_en = m.look_en; });
     let parts = (B.parts || []).map(x => ({ id: uid(), title: x.title, start: +x.start || 0, end: +x.end || 0, summary: x.summary, shots: [] }));
@@ -1060,4 +1094,21 @@ function refsForShot(p, sh) {
     const nums = ph.map(() => ++n);
     return { c, ph, n: nums };
   });
+}
+
+/* regola sui personaggi scelta dall'utente nel passo 1 */
+function rgSelNames(p) { return (p.castSel || []).map(id => S.chars.find(c => c.id === id)).filter(Boolean).map(c => c.name); }
+function rgCharRule(p) {
+  const n = p.nChars || 0, sel = rgSelNames(p);
+  const must = sel.length ? ` They MUST include these cast members with these exact names: ${sel.join(', ')}.` : '';
+  if (!n) return `Max 3 recurring characters.${must}`;
+  return `EXACTLY ${n} recurring character${n > 1 ? 's' : ''} in the whole film, no more and no less (people in the background do not exist).${must}${sel.length < n ? ` Invent the other ${n - sel.length}.` : ''}`;
+}
+function rgCharCheck(p, B) {
+  const chars = (B && B.characters) || [], n = p.nChars || 0;
+  const names = chars.map(c => String(c.cast || c.name).toLowerCase());
+  if (n && chars.length !== n) return `you wrote ${chars.length} characters instead of exactly ${n}`;
+  const miss = rgSelNames(p).filter(s => !names.includes(s.toLowerCase()) && !chars.some(c => String(c.name).toLowerCase() === s.toLowerCase()));
+  if (miss.length) return `these cast members are missing: ${miss.join(', ')}`;
+  return '';
 }

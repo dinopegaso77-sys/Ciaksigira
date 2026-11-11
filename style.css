@@ -660,3 +660,17 @@ button.ch:hover{border-color:var(--text)}
 @media (max-width:560px){.ca-res{grid-template-columns:1fr}.ca-img{max-width:260px}.cs-photos{grid-template-columns:repeat(2,minmax(0,1fr))}}
 label.btn{display:inline-flex;align-items:center;gap:6px;margin:0;font-family:"Inter",system-ui,sans-serif;letter-spacing:0;text-transform:none;color:var(--text)}
 .sh-real small{display:block;margin-top:6px;font-size:.78rem}
+.rg-who{display:grid;grid-template-columns:160px 1fr;gap:12px;align-items:end;margin-top:4px}
+.rg-castsel>span{display:block;font-family:var(--f-label);letter-spacing:.1em;color:var(--muted);margin:14px 0 6px}
+.rg-castsel .chipset{margin:0}
+.chip.cc{display:inline-flex;align-items:center;gap:6px;padding:4px 12px 4px 4px;color:var(--text)}
+.chip.cc img{width:26px;height:26px;border-radius:50%;object-fit:cover}
+.chip.cc.on{background:var(--text);color:#0a0a0a}
+.rg-whonote{margin:8px 0 0}
+@media (max-width:560px){.rg-who{grid-template-columns:1fr}}
+.rg-grid .rg-who{grid-template-columns:1fr}
+.rg-who.first{margin:0 0 6px;padding-bottom:12px;border-bottom:1px dashed var(--line2)}
+.rg-who .req{color:#ff8b80}
+#rgN.need{border-color:#e8c25a;box-shadow:0 0 0 2px rgba(232,194,90,.25)}
+#rgWrite.off{opacity:.55}
+.rg-who{grid-template-columns:220px 1fr}@media (max-width:560px){.rg-who{grid-template-columns:1fr}}

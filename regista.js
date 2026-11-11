@@ -235,9 +235,20 @@ async function rpJob(endpoint, input, maxWait = 300) {
   addSpend(cost);
   return url;
 }
+/* scarica un'immagine creata da RunPod. Alcuni server (es. Nano Banana) non lasciano scaricare al browser (CORS):
+   in quel caso il worker di montaggio la copia nell'archivio R2 e la scarichiamo da lì. Gratis, niente da rigenerare. */
 async function urlToJpeg(url, max = 1024) {
-  const r = await fetch(url); if (!r.ok) throw new Error('immagine non scaricabile');
-  return await fileToJpeg(await r.blob(), max);
+  try {
+    const r = await fetch(url); if (!r.ok) throw new Error('http ' + r.status);
+    return await fileToJpeg(await r.blob(), max);
+  } catch (e) {
+    if (!(r2On() && montId())) throw new Error('immagine creata ma non scaricabile dal browser: attiva l\'archivio R2 e il worker di montaggio in ⚙︎, poi riprova (non verrà ricreata)');
+    let k;
+    try { k = (await workerCall({ action: 'save_url', url, key: `temp/immagine-${uid()}.jpg`, type: 'image/jpeg' })).key; }
+    catch (e2) { throw new Error('immagine creata ma non copiata nell\'archivio: ' + e2.message + ' (riprova: non verrà ricreata)'); }
+    const r2 = await fetch(await libUrl(k)); if (!r2.ok) throw new Error('immagine copiata ma archivio non raggiungibile (riprova)');
+    return await fileToJpeg(await r2.blob(), max);
+  }
 }
 const kfSize = ratio => ratio === '9:16' ? '928*1664' : ratio === '1:1' ? '1328*1328' : '1664*928';
 const RATIO_TXT = { '16:9': 'horizontal widescreen 16:9 landscape composition', '9:16': 'vertical 9:16 portrait composition', '1:1': 'square composition' };
@@ -320,7 +331,7 @@ $('#peGo').onclick = async () => {
     const p = pePhoto(c);
     const image = r2On() ? await toModelUrl(p.img, 'ritocco-' + c.id + '-' + p.id) : p.img;
     const url = await rpJob('qwen-image-edit', { prompt: instr, image, negative_prompt: 'extra people, extra hands, extra arms, deformed, blurry, changed face', seed: -1, output_format: 'jpeg', enable_safety_checker: true });
-    await setCharImg(c, await urlToJpeg(url, 1280));
+    await setCharImg(c, (await storeImage(url, 'ritocco', c.name, 1280)).img);
     st.textContent = 'Fatto ✓ Se non ti piace premi "Annulla l\'ultimo".';
   } catch (e) { st.textContent = 'Ritocco non riuscito: ' + e.message; }
   btn.disabled = false; $('#peBusy').classList.add('hidden');
@@ -331,7 +342,7 @@ $('#peOrig').onclick = async () => { const c = peChar(); if (!c) return; const p
 async function aiPortrait(name, look) {
   const prompt = `Photorealistic cinematic character reference portrait of ${look}. Front view, from the chest up, looking at the camera with a neutral relaxed expression, plain neutral grey studio background, soft key light, sharp focus, natural skin texture, 50mm lens. Only one person in the image, both shoulders visible, no hands in front of the body, no text.`;
   const url = await rpJob('qwen-image-t2i', { prompt, negative_prompt: 'extra people, extra hands, extra fingers, deformed face, cartoon, cgi, text, watermark, blurry', size: '1024*1024', seed: -1, enable_safety_checker: true });
-  return await urlToJpeg(url, 1024);
+  return (await storeImage(url, 'ritratto', name, 1024)).img;
 }
 /* =================== REGISTA: progetti =================== */
 const RG = { cur: null, busy: new Map(), thinking: null };
@@ -512,7 +523,7 @@ function rgPartHtml(p, pt, pi) {
     <div class="rg-shots">${pt.shots.map((sh, si) => {
       const s = sts[si], L = lintShot(sh, p.engine);
       sh.kf = sh.kf || null;
-      const th = s.clip ? `<video src="${clipSrc(s.clip)}#t=0.5" muted playsinline preload="metadata"></video>` : sh.kf && sh.kf.img ? `<img src="${sh.kf.img}" alt="">` : `<span class="n">${pi + 1}.${si + 1}</span>`;
+      const th = s.clip ? `<video src="${clipSrc(s.clip)}#t=0.5" muted playsinline preload="metadata"></video>` : sh.kf && (sh.kf.img || sh.kf.url) ? `<img src="${sh.kf.img || sh.kf.url}" alt="">` : `<span class="n">${pi + 1}.${si + 1}</span>`;
       return `<button class="rg-shot st-${s.st}" data-shot="${pi}:${si}">
         <div class="th">${th}<i class="badge">${s.st === 'kf' ? '⏳' : s.st === 'run' ? '🎬' : s.st === 'ok' ? '✓' : s.st === 'err' ? '!' : s.st === 'appr' ? '👍' : s.st === 'frame' ? '?' : ''}</i></div>
         <div class="sl"><b>${pi + 1}.${si + 1} · ${nearestDur(p.engine, sh.dur)}s</b><span class="stl">${s.st === 'kf' ? esc(s.label) + '…' : s.label}</span><small>${esc(sh.action || '')}</small>${(sh.lines || []).length ? `<i class="ln">💬 ${esc(sh.lines[0].char)}: «${esc(sh.lines[0].text)}»</i>` : ''}<em class="rs ${L.score >= 80 ? 'g' : L.score >= 60 ? 'y' : 'r'}">prompt ${L.score}</em>${sh.kf && !ratioOk(p, sh.kf) ? '<em class="rs r">⚠ formato</em>' : ''}</div>
@@ -876,12 +887,12 @@ async function makeKeyframe(p, sh) {
   // per i modelli che non rispettano il formato: un solo nuovo tentativo (vedi sotto)
   for (let tries = 0; tries < 2; tries++) {
     kf = { url, t: Date.now(), sig: kfSig(p, sh) };
-    try { kf.img = await urlToJpeg(url, 480); const d = await imgDims(kf.img); if (d) { kf.w = d.w; kf.h = d.h; } } catch (e) { }
+    try { const s = await storeImage(url, 'fotogramma', (sh.chars || []).join('-') || 'scena', 640); kf.img = s.img; kf.key = s.key; } catch (e) { }
+    { const d = await imgDims(kf.img || url); if (d) { kf.w = d.w; kf.h = d.h; } }
     if (ratioOk(p, kf) || tries) break;
     // formato sbagliato: un solo nuovo tentativo, perché un fotogramma nel formato sbagliato non serve
     url = await gen(` The image MUST be ${RATIO_TXT[p.ratio] || RATIO_TXT['16:9']}.`);
   }
-  if (r2On() && montId()) { try { kf.key = (await workerCall({ action: 'save_url', url: kf.url, key: `ciak/fotogramma-${sh.id}-${kf.sig}.jpg`, type: 'image/jpeg' })).key; } catch (e) { } }
   return kf;
 }
 async function kfUrl(kf) { return Date.now() - kf.t < 6.5 * 864e5 ? kf.url : await libUrl(kf.key); }

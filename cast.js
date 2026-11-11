@@ -17,6 +17,7 @@ async function saveChar(c) {
   const i = S.chars.findIndex(x => x.id === c.id); if (i < 0) S.chars.push(c); else S.chars[i] = c;
   renderChars(); renderRefChars();
   if (window.regiaRefresh) regiaRefresh();
+  if (window.syncCastToR2) setTimeout(syncCastToR2, 500);
 }
 
 /* =================== scheda personaggio =================== */
@@ -81,7 +82,8 @@ async function createViews(c, kinds) {
   for (const k of kinds) {
     const look = c.look_en ? ' Outfit and look: ' + c.look_en : '';
     const url = await rpJob('seedream-v4-edit', { prompt: VIEW_PROMPT[k] + look, images: [ref], size: '1024*1024', enable_safety_checker: true });
-    ph.push({ id: uid(), img: await urlToJpeg(url, 1280), kind: k, ai: true });
+    const s = await storeImage(url, 'vista', c.name + '-' + k, 1280);
+    ph.push({ id: uid(), img: s.img, key: s.key, kind: k, ai: true });
     await saveChar(c);
   }
 }
@@ -227,7 +229,7 @@ function renderCsMaster() {
   box.innerHTML = `${d ? `<div class="ms-img"><img src="${d.img}" alt=""><i class="lock off">da approvare</i></div>` : ''}
     <label>Tratti che non devono mai cambiare (facoltativo)<input id="msTraits" type="text" value="${esc(c.traitsIt || '')}" placeholder="Es. capelli neri lisci corti, occhi castani, nessun occhiale"></label>
     <div class="actions">
-      <button class="btn ${d ? '' : 'primary'}" id="msMake">${d ? '↻ Rifai' : '🎨 Crea il master da tutte le foto'} (≈ 0,13 $)</button>
+      <button class="btn ${d ? '' : 'primary'}" id="msMake">${d ? '↻ Rifai (≈ 0,13 $)' : c.masterPending ? '⬇ Scarica il master già creato (gratis)' : '🎨 Crea il master da tutte le foto (≈ 0,13 $)'}</button>
       ${d ? '<button class="btn primary" id="msLock">🔒 Blocca come master</button>' : ''}
     </div>
     <p class="muted small" id="msStatus">${charPhotos(c).length < 2 ? 'Consiglio: carica almeno 2–3 foto (volto, profilo, figura intera) per un master fedele.' : ''}</p>`;
@@ -240,8 +242,16 @@ function renderCsMaster() {
       const ph = [...charPhotos(c)].sort((a, b2) => ['volto', 'profilo', 'figura', 'altro'].indexOf(a.kind) - ['volto', 'profilo', 'figura', 'altro'].indexOf(b2.kind)).slice(0, 4);
       const imgs = []; for (const p of ph) imgs.push(r2On() ? await toModelUrl(p.img, 'cast-' + c.id + '-' + p.id) : p.img);
       const traits = c.traitsIt ? await toEnglish(c.traitsIt) : '';
-      const url = await rpJob('google-nano-banana-2-edit', { prompt: MASTER_PROMPT + (traits ? ' These traits must be exactly respected: ' + traits + '.' : ''), images: imgs, resolution: '2k', aspect_ratio: '16:9', output_format: 'jpeg' });
-      c.masterDraft = { img: await urlToJpeg(url, 1664), traits_en: traits, traits: c.traitsIt || '' };
+      // se un master è già stato creato ma non scaricato, si riprova solo a scaricarlo (gratis)
+      let url = !c.masterDraft && c.masterPending && Date.now() - c.masterPending.t < 6 * 864e5 ? c.masterPending.url : null;
+      if (url) b.textContent = '⬇ Scarico il master già creato…';
+      else {
+        url = await rpJob('google-nano-banana-2-edit', { prompt: MASTER_PROMPT + (traits ? ' These traits must be exactly respected: ' + traits + '.' : ''), images: imgs, resolution: '2k', aspect_ratio: '16:9', output_format: 'jpeg' });
+        c.masterPending = { url, t: Date.now() }; await saveChar(c);
+      }
+      const s = await storeImage(url, 'master', c.name, 1664);
+      c.masterDraft = { img: s.img, key: s.key, traits_en: traits, traits: c.traitsIt || '' };
+      c.masterPending = null;
       await saveChar(c);
     } catch (e) { toast('Master non riuscito: ' + e.message, 7000); }
     renderCsMaster();

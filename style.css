@@ -689,3 +689,18 @@ label.btn{display:inline-flex;align-items:center;gap:6px;margin:0;font-family:"I
 .warn-inv{font-style:normal;font-size:.78rem;color:#ff8b80}
 .warn-soft{font-style:normal;font-size:.78rem;color:#e8c25a}
 .rg-budget select{width:auto;max-width:100%;margin:0;padding:8px 10px;background:#0d0d0d;border:1px solid var(--line2);border-radius:8px;color:var(--text);font-size:16px}
+/* ================= ARCHIVIO ================= */
+.ar-head{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:10px}
+.ar-usage{flex:1;min-width:220px;background:var(--slate);border:1px solid var(--line2);border-radius:10px;padding:10px 12px;font-size:.92rem}
+.ar-usage b{font-family:var(--f-label);font-size:1.3rem;letter-spacing:.04em;margin-right:4px}
+.ar-usage small{display:block;color:var(--muted);font-size:.78rem;margin-top:2px}
+#arSrc .chip i{font-style:normal;opacity:.6;margin-left:4px;font-size:.8rem}
+#arMore{display:block;margin:14px auto 0}
+.ai-prev{background:#000;border-radius:10px;overflow:hidden;display:flex;justify-content:center;align-items:center;min-height:120px}
+.ai-prev img,.ai-prev video{max-width:100%;max-height:60vh;display:block}
+.ai-prev audio{width:100%;margin:30px 16px}
+#aiInfo{word-break:break-all}
+
+#galTabs{grid-template-columns:repeat(3,minmax(0,1fr))}
+#galTabs button{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+@media (max-width:480px){#galTabs button{font-size:.95rem;padding-left:4px;padding-right:4px}}

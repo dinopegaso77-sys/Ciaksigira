@@ -16,7 +16,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Kalam:wght@400;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=2.4">
+<link rel="stylesheet" href="style.css?v=2.5">
 </head>
 <body>
 
@@ -145,6 +145,7 @@
     <div class="seg2" id="galTabs">
       <button class="active" data-g="ciak">🎬 Ciak</button>
       <button data-g="file">📁 I miei file</button>
+      <button data-g="arch">🗄 Archivio</button>
     </div>
 
     <div id="galCiak">
@@ -174,6 +175,25 @@
         <div id="upList" class="uplist"></div>
         <p id="libStatus" class="muted small"></p>
         <div id="libGrid" class="gallery"></div>
+      </div>
+    </div>
+    <div id="galArch" class="hidden">
+      <div id="arOff" class="slate hidden"><div class="slate-body"><h2 class="chalk">Archivio non collegato</h2>
+        <p class="muted">Collega l'archivio Cloudflare R2 in ⚙︎ Impostazioni per conservare tutto e vederlo qui.</p></div></div>
+      <div id="arOn">
+        <div class="ar-head">
+          <div id="arUsage" class="ar-usage">—</div>
+          <button class="btn small" id="arReload" title="Aggiorna">⟳</button>
+          <button class="btn small" id="arClean">🧹 Svuota temporanei</button>
+        </div>
+        <div class="chips" id="arSrc"></div>
+        <div class="chips" id="arKind">
+          <button class="chip active" data-k="all">Tutto</button><button class="chip" data-k="video">🎬 Video</button>
+          <button class="chip" data-k="image">🖼 Immagini</button><button class="chip" data-k="audio">♪ Audio</button>
+        </div>
+        <p id="arStatus" class="muted small"></p>
+        <div id="arGrid" class="gallery"></div>
+        <button class="btn hidden" id="arMore">Mostra altri</button>
       </div>
     </div>
   </section>
@@ -318,7 +338,7 @@
     </details>
 
     <button class="btn big" id="lockNow">🔒 Blocca l'app</button>
-    <p class="muted small ver">Ciak si gira · versione <b id="appVer">2.4</b></p>
+    <p class="muted small ver">Ciak si gira · versione <b id="appVer">2.5</b></p>
   </div>
 </div>
 
@@ -458,6 +478,19 @@
   </div>
 </div>
 
+<div class="modal hidden" id="mArch">
+  <div class="mbox wide">
+    <div class="mhead"><h2 class="chalk" id="aiTitle">File</h2><button class="x" data-close>✕</button></div>
+    <div id="aiPrev" class="ai-prev"></div>
+    <p class="muted small" id="aiInfo"></p>
+    <div class="actions">
+      <a class="btn primary" id="aiDl" target="_blank" rel="noopener">⬇ Scarica</a>
+      <button class="btn hidden" id="aiUse">Usa…</button>
+      <button class="btn" id="aiDel">🗑 Elimina</button>
+    </div>
+  </div>
+</div>
+
 <div class="modal hidden" id="mPhotoEdit">
   <div class="mbox">
     <div class="mhead"><h2 class="chalk">Ritocca la foto</h2><button class="x" data-close>✕</button></div>
@@ -594,13 +627,14 @@
 </div>
 
 <div id="toast" class="toast"></div>
-<script src="models.js?v=2.4"></script>
-<script src="app.js?v=2.4"></script>
-<script src="montaggio.js?v=2.4"></script>
-<script src="libreria.js?v=2.4"></script>
-<script src="voce.js?v=2.4"></script>
-<script src="sottotitoli.js?v=2.4"></script>
-<script src="cast.js?v=2.4"></script>
-<script src="regista.js?v=2.4"></script>
+<script src="models.js?v=2.5"></script>
+<script src="app.js?v=2.5"></script>
+<script src="montaggio.js?v=2.5"></script>
+<script src="libreria.js?v=2.5"></script>
+<script src="voce.js?v=2.5"></script>
+<script src="sottotitoli.js?v=2.5"></script>
+<script src="cast.js?v=2.5"></script>
+<script src="archivio.js?v=2.5"></script>
+<script src="regista.js?v=2.5"></script>
 </body>
 </html>

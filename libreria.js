@@ -116,6 +116,8 @@ function galTab(t) {
   $$('#galTabs button').forEach(b => b.classList.toggle('active', b.dataset.g === t));
   $('#galCiak').classList.toggle('hidden', t !== 'ciak');
   $('#galFiles').classList.toggle('hidden', t !== 'file');
+  $('#galArch').classList.toggle('hidden', t !== 'arch');
+  if (t === 'arch' && window.renderArch) renderArch(true);
   $('#cmpBtn').classList.toggle('hidden', t !== 'ciak');
   if (t === 'file') { renderLib(); if (r2On() && !LIB.loaded) libRefresh(); }
 }

@@ -102,6 +102,14 @@ Nel Regista, "🎨 Crea con AI" apre la stessa intervista già compilata con que
 puoi annullare l'ultimo ritocco o tornare all'originale. **Crea:** ✨ Crea prompt trasforma la tua idea in un prompt
 per il modello scelto, con le regole contro mani in più, arti tagliati e volti che cambiano.
 
+## 8. Archivio completo (versione 2.5)
+Tutto resta in Cloudflare R2: ciak (`ciak/`), film (`film/`), i tuoi file e le voci (`libreria/`), campioni delle voci clonate (`voci/`)
+e ora anche ogni immagine (`immagini/`): master, fotogrammi, ritratti e viste AI, ritocchi e foto del Cast.
+Le immagini create da RunPod vengono copiate direttamente dal worker (gratis); le foto del Cast si caricano da sole in sottofondo.
+Galleria → **Archivio**: filtri per tipo (video, immagini, audio) e provenienza, anteprime, scarica, elimina, spazio usato.
+"Svuota temporanei" elimina solo i file di servizio (`temp/`, `anteprima/`) più vecchi di 2 giorni.
+R2 è gratis fino a 10 GB, poi circa 0,015 $ al GB al mese.
+
 ## Note
 - Non modificare l'endpoint di Fonica Infinity: gli endpoint di Ciak si gira sono separati.
 - I link ai video RunPod durano 7 giorni: con l'archivio R2 attivo ogni ciak ha anche una copia permanente.

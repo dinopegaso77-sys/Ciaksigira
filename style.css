@@ -659,3 +659,4 @@ button.ch:hover{border-color:var(--text)}
 #mCharAI .btn small{opacity:.65;font-size:.8rem;margin-left:6px}
 @media (max-width:560px){.ca-res{grid-template-columns:1fr}.ca-img{max-width:260px}.cs-photos{grid-template-columns:repeat(2,minmax(0,1fr))}}
 label.btn{display:inline-flex;align-items:center;gap:6px;margin:0;font-family:"Inter",system-ui,sans-serif;letter-spacing:0;text-transform:none;color:var(--text)}
+.sh-real small{display:block;margin-top:6px;font-size:.78rem}

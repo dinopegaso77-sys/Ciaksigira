@@ -612,6 +612,7 @@ MODEL GUIDE: ${MODEL_GUIDE[engine] || MODEL_GUIDE.wan}
 ALLOWED SHOT DURATIONS (seconds): ${(m.durations && m.durations.length ? m.durations : [5]).join(', ')}. Prefer 4-6 s for shots with people moving, up to 8-10 s only for calm establishing shots.
 Each prompt must be self-contained: repeat the full look_en of every visible character and of the location, plus the global look (style, palette, lighting, lens).
 For "motion" describe the physics of the movement: speed, weight shifts, contact points, what moves secondarily (cloth, hair, dust, light).
+LANGUAGE: "prompt", "motion", "camera" and "negative" MUST be written in ENGLISH even though the story is Italian; only "action", "framing" and "lines" are in Italian.
 DIALOGUE: when a character speaks, put the spoken words in "lines" (Italian, natural spoken language, max 14 words per line, ONE speaker per shot). A speaking shot is a medium close-up or close-up of the speaker, facing the camera at three-quarters, mouth clearly visible, small natural gestures; set "oncam": true. Lines spoken off-screen or over other images use "oncam": false.
 Reply ONLY with JSON: {"shots":[{"dur":5,"chars":["exact character names in frame"],"location":"name","framing":"Italian, e.g. piano medio","camera":"English camera move","action":"ONE Italian sentence","motion":"English physics of the movement","prompt":"English, model-specific","negative":"English, scene-specific things to avoid","lines":[{"char":"name","text":"Italian line","emotion":"neutral|happy|sad|angry|fearful|surprised","oncam":true}]}]}`;
 }
@@ -639,6 +640,7 @@ DIALOGUE MODE: ${p.dialog === 'no' ? 'no dialogue at all, "lines" always empty' 
       (fix.shots || []).forEach((s, j) => { const b = bad[j]; if (b && s.prompt) Object.assign(shots[b.k], { action: s.action || shots[b.k].action, motion: s.motion || shots[b.k].motion, prompt: s.prompt, negative: s.negative || shots[b.k].negative, camera: s.camera || shots[b.k].camera, chars: (s.chars || shots[b.k].chars) }); });
     } catch (e) { }
   }
+  for (const s of shots) { if (looksItalian(s.prompt)) { try { const en = await llm('You translate AI video prompts from Italian into precise cinematic English. Keep every visual detail. Reply with the translation only.', s.prompt, 1200); if (en && !looksItalian(en)) s.prompt = en.trim(); } catch (e) { } } }
   // durata: rispetta i limiti del modello e accorcia le scene complesse
   shots.forEach(s => { const L = lintShot(s, p.engine); s.dur = nearestDur(p.engine, Math.min(s.dur, L.maxDur)); });
   return shots;
@@ -676,15 +678,15 @@ function rgAiChar(p, i) {
 /* ---- controllo gratuito dei servizi prima di spendere ---- */
 RG.health = {};
 async function rgPreflight(eps) {
+  // solo i TUOI endpoint (montaggio e voce) espongono /health: i modelli pubblici di RunPod non si controllano così
   const bad = [];
   for (const ep of [...new Set(eps.filter(Boolean))]) {
-    const h = RG.health[ep]; if (h && Date.now() - h < 10 * 60e3) continue;
     const own = ep === montId() || ep === voceId();
+    if (!own) continue;
+    const h = RG.health[ep]; if (h && Date.now() - h < 10 * 60e3) continue;
     try { await rp(`/${ep}/health`); RG.health[ep] = Date.now(); }
     catch (e) {
-      if (/Chiave/.test(e.message)) throw e;
-      if (own && /404|not found/i.test(e.message)) bad.push(ep === montId() ? 'worker di montaggio (ID sbagliato?)' : 'worker voce clonata (ID sbagliato?)');
-      // per gli endpoint pubblici un errore di /health non blocca: non tutti lo espongono
+      if (/404|non trovato/i.test(e.message)) bad.push(ep === montId() ? 'worker di montaggio (ID sbagliato?)' : 'worker voce clonata (ID sbagliato?)');
     }
   }
   if (bad.length) throw new Error('servizio non raggiungibile: ' + bad.join(', ') + '. Controlla in ⚙︎ Impostazioni');
@@ -737,6 +739,7 @@ async function rgPrepare(pid, shId) {
       const v = await ttsLine(p, line);
       p = rgShotMut(pid, shId, x => { x.voice = v; }); sh = rgFind(p, shId);
     }
+    if (looksItalian(sh.prompt)) { RG.busy.set(shId, 'Traduco il prompt'); regiaRefresh(); await ensureEnglish(pid, shId); p = rgList().find(x => x.id === pid); sh = rgFind(p, shId); }
     if (!kfValid(p, sh)) {
       RG.busy.set(shId, 'Fotogramma'); regiaRefresh();
       const kf = await makeKeyframe(p, sh);
@@ -744,6 +747,19 @@ async function rgPrepare(pid, shId) {
     }
   } catch (e) { rgShotMut(pid, shId, x => { x.err = e.message; }); throw e; }
   finally { RG.busy.delete(shId); regiaRefresh(); }
+}
+/* i modelli video e immagine capiscono molto meglio l'inglese: se un prompt è in italiano lo traduce (costa < 0,001 $) */
+function looksItalian(s) {
+  s = ' ' + String(s || '').toLowerCase() + ' ';
+  const it = (s.match(/\b(il|lo|gli|della|delle|degli|dello|che|con|una|uno|anni|capelli|occhi|si|sulla|nella|alla|del|nel|mentre|lentamente|verso|sono|viene)\b/g) || []).length;
+  const en = (s.match(/\b(the|and|with|of|his|her|is|on|at|while|slowly|towards|from|their)\b/g) || []).length;
+  return it >= 4 && it > en * 1.5;
+}
+async function ensureEnglish(pid, shId) {
+  let p = rgList().find(x => x.id === pid), sh = p && rgFind(p, shId);
+  if (!sh || !looksItalian(sh.prompt)) return;
+  const en = await llm('You translate AI video prompts from Italian into precise cinematic English for video generation models. Keep every visual detail, character description and camera direction. Reply with the translation only.', sh.prompt, 1200);
+  if (en && !looksItalian(en)) rgShotMut(pid, shId, x => { x.prompt = en.replace(/^["']|["']$/g, '').trim(); });
 }
 function lookOf(p) { const B = p.bible || {}; return B.look ? [B.look.style_en, B.look.palette_en, B.look.lighting_en, B.look.camera_en].filter(Boolean).join(', ') : ''; }
 async function makeKeyframe(p, sh) {
@@ -806,7 +822,6 @@ async function rgFilm(pid, shId) {
       audio: p.audio, ex: {}, startImg: img, charImgs: [], charIds: people.filter(x => x.cast).map(x => x.cast.id),
       img, audioIn, refVideoId: '', refDuration: 0, klAudio: false
     };
-    if (!RG.health[m.endpoint(o)]) await rgPreflight([m.endpoint(o)]);
     const job = await launchClip(o, { rgShot: sh.id, rgProj: p.id });
     rgMut(pid, x => { x.spent = (x.spent || 0) + job.est; });
     return job;

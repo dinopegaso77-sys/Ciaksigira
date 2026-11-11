@@ -1,6 +1,6 @@
 /* Ciak si gira — generatore di clip video via RunPod Public Endpoints */
 'use strict';
-const APP_VERSION = '2.3'; // deve coincidere con ?v= in index.html
+const APP_VERSION = '2.3.1'; // deve coincidere con ?v= in index.html
 
 const API = 'https://api.runpod.ai/v2';
 const $ = s => document.querySelector(s);
@@ -136,7 +136,10 @@ async function rp(path, opts = {}) {
   const r = await fetch(API + path, { ...opts, headers: { Authorization: 'Bearer ' + key(), 'Content-Type': 'application/json', ...(opts.headers || {}) } });
   let j = {}; try { j = await r.json(); } catch (e) { }
   if (!r.ok) {
-    if (r.status === 401 || r.status === 403) throw new Error('Chiave RunPod non valida');
+    const ep = (path.split('/')[1] || '').slice(0, 40);
+    if (r.status === 401) throw new Error('Chiave RunPod non valida');
+    if (r.status === 403) throw new Error(`RunPod ha rifiutato l'accesso a "${ep}" (403)${j.error ? ': ' + j.error : ''}. Se la chiave ha permessi limitati, dalle accesso in lettura e scrittura a tutti gli endpoint`);
+    if (r.status === 404) throw new Error(`Servizio "${ep}" non trovato su RunPod (404)`);
     throw new Error(j.error || j.message || ('Errore RunPod ' + r.status));
   }
   return j;

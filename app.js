@@ -1,6 +1,6 @@
 /* Ciak si gira — generatore di clip video via RunPod Public Endpoints */
 'use strict';
-const APP_VERSION = '2.3.4'; // deve coincidere con ?v= in index.html
+const APP_VERSION = '2.4'; // deve coincidere con ?v= in index.html
 
 const API = 'https://api.runpod.ai/v2';
 const $ = s => document.querySelector(s);
@@ -627,7 +627,7 @@ $('#charSave').onclick = async () => {
 };
 function renderChars() {
   const box = $('#chars');
-  box.innerHTML = S.chars.length ? S.chars.map(c => `<button class="ch" data-cs="${c.id}"><img src="${c.img}" alt=""><span class="ch-b">${(c.photos || []).length > 1 ? `<i>📷 ${c.photos.length}</i>` : ''}${c.voiceId ? `<i>${c.voiceId.startsWith('clone:') ? '🎙' : '🗣'}</i>` : ''}</span><div class="info"><b>${esc(c.name)}</b><small>${esc(c.desc || '')}</small></div></button>`).join('')
+  box.innerHTML = S.chars.length ? S.chars.map(c => `<button class="ch" data-cs="${c.id}"><img src="${c.img}" alt=""><span class="ch-b">${(c.photos || []).length > 1 ? `<i>📷 ${c.photos.length}</i>` : ''}${c.voiceId ? `<i>${c.voiceId.startsWith('clone:') ? '🎙' : '🗣'}</i>` : ''}${c.master ? '<i>🔒 master</i>' : ''}</span><div class="info"><b>${esc(c.name)}</b><small>${esc(c.desc || '')}</small></div></button>`).join('')
     : '<div class="empty">Il cast è vuoto.<br>Tocca "+ Nuovo" per aggiungere un personaggio.</div>';
   box.querySelectorAll('[data-cs]').forEach(b => b.onclick = () => window.openCharSheet && openCharSheet(b.dataset.cs));
 }

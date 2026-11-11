@@ -371,8 +371,8 @@ function shotState(sh, p) {
 /* il fotogramma vale finché non cambiano prompt, look, volti, formato o voce in camera; dura 7 giorni su RunPod, per sempre in R2 */
 function kfSig(p, sh) {
   const B = p.bible || {}, look = B.look ? JSON.stringify(B.look) : '';
-  const casts = (sh.chars || []).map(n => { const c = charOfName(p, n).cast; return c ? c.id + ':' + charPhotos(c).map(x => x.kind + x.img.length + x.img.slice(-12)).join(',') : n; }).join('|');
-  return hashStr([sh.prompt, sh.frame || '', JSON.stringify(sh.gaze || []), JSON.stringify(sh.place || []), look, p.ratio, casts, isTalk(p, sh) ? 'talk' : ''].join('#'));
+  const casts = (sh.chars || []).map(n => { const c = charOfName(p, n).cast; return c ? c.id + ':' + (c.master ? 'M' + c.master.t : '') + charPhotos(c).map(x => x.kind + x.img.length + x.img.slice(-12)).join(',') : n; }).join('|') + JSON.stringify(storyChangesFor(p, sh));
+  return hashStr([(p.kfEngine || 'fedele'), sh.prompt, sh.frame || '', JSON.stringify(sh.gaze || []), JSON.stringify(sh.place || []), look, p.ratio, casts, isTalk(p, sh) ? 'talk' : ''].join('#'));
 }
 const kfFresh = kf => !!kf && (Date.now() - kf.t < 6.5 * 864e5 || !!kf.key);
 function kfValid(p, sh) { return !!(sh.kf && sh.kf.sig === kfSig(p, sh) && kfFresh(sh.kf)); }
@@ -382,9 +382,15 @@ function voiceValid(p, sh) {
   const v = sh.voice; return !!(v && v.text === line.text && v.vid === voiceOfChar(p, line.char) && v.emotion === line.emotion);
 }
 const KF_PRICE = 0.03;
+const KF_ENGINES = {
+  fedele: { label: 'Volti fedeli (Nano Banana 2)', ep: 'google-nano-banana-2-edit', price: 0.09 },
+  eco: { label: 'Economico (Seedream)', ep: 'seedream-v4-edit', price: 0.03 }
+};
+const kfEngine = p => KF_ENGINES[(p && p.kfEngine) || 'fedele'] || KF_ENGINES.fedele;
+function kfPrice(p, sh) { return (sh.chars || []).some(n => charOfName(p, n).cast) ? kfEngine(p).price : 0.02; }
 function costParts(p, sh) {
   const voice = voiceValid(p, sh) ? 0 : (sh.lines || []).slice(0, 1).reduce((k, l) => k + l.text.length * 0.00005, 0);
-  const frame = kfValid(p, sh) ? 0 : KF_PRICE;
+  const frame = kfValid(p, sh) ? 0 : kfPrice(p, sh);
   let video = 0;
   if (isTalk(p, sh)) video = 0.5;
   else { const m = MODELS[p.engine]; try { video = m.price({ engine: p.engine, duration: nearestDur(p.engine, sh.dur), res: m.defRes || '720p', ratio: p.ratio, audio: p.audio, ex: {}, startImg: 'x', img: 'x', charImgs: [] }); } catch (e) { } }
@@ -433,6 +439,7 @@ function renderRegia() {
     <div class="rg-opts rg-opts2">
       <label>Dialoghi<select id="rgDialog">${[['no', 'Nessuno (solo immagini)'], ['pochi', 'Pochi e brevi'], ['copione', 'Come nel copione']].map(([v, t]) => `<option value="${v}" ${p.dialog === v ? 'selected' : ''}>${t}</option>`).join('')}</select></label>
     </div>
+    <label class="rg-budget">Fotogrammi con i personaggi<select id="rgKf">${Object.entries(KF_ENGINES).map(([k, v]) => `<option value="${k}" ${(p.kfEngine || 'fedele') === k ? 'selected' : ''}>${v.label} · ≈ ${money(v.price)}</option>`).join('')}</select></label>
     <label class="rg-budget">Budget massimo del film ($) <input id="rgBudget" type="number" min="0" step="1" inputmode="decimal" placeholder="nessun limite" value="${p.budget || ''}"></label>
     <label class="check"><input type="checkbox" id="rgLip" ${p.lipsync !== false ? 'checked' : ''}> Labbra sincronizzate quando un personaggio parla in camera (InfiniteTalk)</label>
     <label class="check"><input type="checkbox" id="rgAudio" ${p.audio ? 'checked' : ''}> Suoni d'ambiente nei ciak (la musica la metti tu al montaggio)</label>
@@ -472,7 +479,7 @@ function rgStoryHtml(p) {
       const cast = c.castId && S.chars.find(x => x.id === c.castId);
       return `<div class="rg-char">
         <div class="rg-face">${cast ? `<img src="${cast.img}" alt="">` : '<span>?</span>'}</div>
-        <div class="rg-ci"><b>${esc(c.name)}</b><small>${esc(c.role || '')}</small>
+        <div class="rg-ci"><b>${esc(c.name)}${cast && cast.master ? ' <i class="mtag">🔒 master</i>' : ''}</b><small>${esc(c.role || '')}</small>${!cast ? '<em class="warn-inv">⚠ non collegato: il volto verrà inventato a ogni fotogramma</em>' : !cast.master ? '<em class="warn-soft">Consiglio: crea e blocca il suo master nella scheda</em>' : ''}
           <select data-cast="${i}"><option value="">${cast ? '— scollega —' : 'Scegli dal Cast…'}</option>${S.chars.map(x => `<option value="${x.id}" ${c.castId === x.id ? 'selected' : ''}>${esc(x.name)}</option>`).join('')}</select>
           ${p.dialog !== 'no' ? `<select data-voice="${i}" aria-label="Voce">${voiceOptions(c.voiceId)}</select>` : ''}
           <div class="rg-cb">${cast ? `<button class="btn small" data-rpe="${cast.id}">📷 Scheda</button>` : `<button class="btn small" data-aic="${i}">🎨 Crea con AI</button>`}${p.dialog !== 'no' ? `<button class="btn small" data-vtest="${i}">🔊 Prova voce</button>` : ''}</div>
@@ -531,10 +538,10 @@ function rgWhoNote(p) {
 function rgWireIdea(p) {
   const upd = () => {
     p.idea = $('#rgIdea').value; p.length = +$('#rgLen').value; p.genre = $('#rgGenre').value; p.ratio = $('#rgRatio').value;
-    p.engine = $('#rgEngine').value; p.audio = $('#rgAudio').checked; p.dialog = $('#rgDialog').value; p.lipsync = $('#rgLip').checked; p.budget = +$('#rgBudget').value || 0;
+    p.engine = $('#rgEngine').value; p.audio = $('#rgAudio').checked; p.dialog = $('#rgDialog').value; p.lipsync = $('#rgLip').checked; p.budget = +$('#rgBudget').value || 0; p.kfEngine = $('#rgKf').value;
     if (rgList().some(x => x.id === p.id)) rgSave(p);
   };
-  ['#rgIdea', '#rgLen', '#rgGenre', '#rgRatio', '#rgAudio', '#rgDialog', '#rgLip', '#rgBudget'].forEach(s => $(s).addEventListener('change', upd));
+  ['#rgIdea', '#rgLen', '#rgGenre', '#rgRatio', '#rgAudio', '#rgDialog', '#rgLip', '#rgBudget', '#rgKf'].forEach(s => $(s).addEventListener('change', upd));
   const whoNote = () => { const el = $('.rg-whonote'); if (el) el.textContent = rgWhoNote(p); };
   $('#rgN').onchange = () => {
     p.nChars = +$('#rgN').value; const sel = (p.castSel || []).length;
@@ -592,7 +599,11 @@ let rgRefT = 0;
 function regiaRefresh() { clearTimeout(rgRefT); rgRefT = setTimeout(() => { if ($('#view-regista').classList.contains('active') && !document.querySelector('#rgBody :focus')) renderRegia(); }, 400); }
 
 /* =================== REGISTA: scrittura con l'AI =================== */
-function castBrief() { return S.chars.length ? S.chars.map(c => `- ${c.name}: ${c.look_en || c.desc || 'photo available'}`).join('\n') : '(empty: invent the characters)'; }
+function castBrief() {
+  return S.chars.length ? S.chars.map(c => c.master
+    ? `- ${c.name}: HAS A LOCKED MASTER REFERENCE IMAGE. Never invent or change face, hair, age or body${c.master.traits_en ? ' (' + c.master.traits_en + ')' : ''}; for look_en write only "as in the master reference".`
+    : `- ${c.name}: HAS REFERENCE PHOTOS. Never invent or change face, hair, age or body${c.desc ? ' (' + c.desc + ')' : ''}; for look_en write only "as in the reference photos".`).join('\n') : '(empty: invent the characters)';
+}
 async function rgWrite(p) {
   if (!key()) { toast('Collega prima RunPod'); return openSettings(); }
   if (!p.nChars) { toast('Prima scegli quanti personaggi avrà il film'); const n = $('#rgN'); if (n) { n.focus(); n.scrollIntoView({ behavior: 'smooth', block: 'center' }); } return; }
@@ -625,10 +636,11 @@ Rules:
 - Show emotions through simple physical actions, looks and light, not dialogue.
 - Split the film into consecutive parts of 12-25 seconds covering exactly 0..${p.length} s with no gaps.
 - Each character gets one fixed look_en (apparent age, build, face, hair, one outfit) reused identically in every shot.
+- Characters with a locked master keep exactly that appearance for the whole film. Add an entry in "changes" ONLY if the user's idea or screenplay explicitly requires an appearance change (e.g. a haircut), with the part number from which it applies.
 - Rate the content honestly: "tutti" (all audiences), "maturo" (adult themes, nothing explicit), "violento" (strong violence), "esplicito" (nudity or sexual content).
 
 JSON schema:
-{"title":"","logline":"","story":"5-8 sentences","themes":"emotions and themes in Italian","look":{"style_en":"","palette_en":"","lighting_en":"","camera_en":""},"characters":[{"name":"","cast":"exact cast name or empty","role":"","gender":"m|f","age":30,"voice":"Italian, 3-6 words describing the voice","look_en":""}],"locations":[{"name":"","look_en":""}],"parts":[{"title":"","start":0,"end":15,"summary":"3-5 Italian sentences: what we SEE"}],"rating":{"level":"tutti|maturo|violento|esplicito","notes":"Italian, one sentence"}}`;
+{"title":"","logline":"","story":"5-8 sentences","themes":"emotions and themes in Italian","look":{"style_en":"","palette_en":"","lighting_en":"","camera_en":""},"characters":[{"name":"","cast":"exact cast name or empty","role":"","gender":"m|f","age":30,"voice":"Italian, 3-6 words describing the voice","look_en":""}],"locations":[{"name":"","look_en":""}],"parts":[{"title":"","start":0,"end":15,"summary":"3-5 Italian sentences: what we SEE"}],"rating":{"level":"tutti|maturo|violento|esplicito","notes":"Italian, one sentence"},"changes":[{"char":"name","from_part":2,"change_en":"English, only if the story requires it"}]}`;
     let B = await llmJSON(sys, usr, 3500, s => { steps[0].d = s === 'IN_QUEUE' ? 'RunPod accende il modello di testo…' : 'tema, tono ed emozioni della storia'; rgThinkRender(); });
     // controllo: numero e nomi dei personaggi come scelto dall'utente (una sola correzione, costa < 0,01 $)
     const bad = rgCharCheck(p, B);
@@ -637,7 +649,7 @@ JSON schema:
       try { const B2 = await llmJSON(sys, usr + `\n\nYOUR PREVIOUS ANSWER WAS WRONG: ${bad}. Fix it and reply with the full JSON again.`, 3500); if (!rgCharCheck(p, B2)) B = B2; } catch (e) { }
     }
     steps.forEach(s => s.st = 'done'); steps[0].d = B.themes || steps[0].d; rgThinkRender();
-    (B.characters || []).forEach((c, k) => { const m = S.chars.find(x => x.name.toLowerCase() === String(c.cast || c.name).toLowerCase()); c.castId = m ? m.id : null; c.voiceId = (m && m.voiceId) || autoVoice(c, k); if (m && m.look_en) c.look_en = m.look_en; });
+    (B.characters || []).forEach((c, k) => { const m = S.chars.find(x => x.name.toLowerCase() === String(c.cast || c.name).toLowerCase()); c.castId = m ? m.id : null; c.voiceId = (m && m.voiceId) || autoVoice(c, k); if (m && m.master) c.look_en = 'as in the master reference' + (m.master.traits_en ? ' (' + m.master.traits_en + ')' : ''); else if (m) c.look_en = 'as in the reference photos'; });
     let parts = (B.parts || []).map(x => ({ id: uid(), title: x.title, start: +x.start || 0, end: +x.end || 0, summary: x.summary, shots: [] }));
     if (!parts.length) throw new Error('nessuna parte nella trama');
     p.bible = B; p.parts = parts; rgSave(p);
@@ -671,6 +683,7 @@ Each prompt must be self-contained: repeat the full look_en of every visible cha
 For "motion" describe the physics of the movement: speed, weight shifts, contact points, what moves secondarily (cloth, hair, dust, light).
 LANGUAGE: "prompt", "frame", "motion", "camera" and "negative" MUST be written in ENGLISH even though the story is Italian; only "action", "framing" and "lines" are in Italian.
 DIALOGUE: when a character speaks, put the spoken words in "lines" (Italian, natural spoken language, max 14 words per line, ONE speaker per shot). A speaking shot is a medium close-up or close-up of the speaker, facing the camera at three-quarters, mouth clearly visible, small natural gestures; set "oncam": true. Lines spoken off-screen or over other images use "oncam": false.
+CHARACTERS WITH PHOTOS: for characters whose look_en starts with "as in the" (master or reference photos), NEVER describe their face, hair, age, body or clothes in "prompt" or "frame": write their name and describe only pose, action, expression and gaze.
 GAZE AND BLOCKING: for EVERY character in "chars" fill "gaze" (whom or what they look at, e.g. "at Luca", "down at the VHS tape in his hands") and "place" (where they are in the frame). Never leave anyone out.
 FIRST FRAME: "frame" is an English description of the very first frame as a STILL PHOTO (no motion verbs): framing and camera angle, where each person is in the frame, body pose, where each hand is, where each person looks, expression, key props, light. The video model will animate from that photo, so "prompt" focuses on the movement that starts from it.
 Reply ONLY with JSON: {"shots":[{"dur":5,"chars":["exact character names in frame"],"location":"name","framing":"Italian, e.g. piano medio","camera":"English camera move","action":"ONE Italian sentence","frame":"English still description of the first frame","motion":"English physics of the movement","prompt":"English, model-specific","negative":"English, scene-specific things to avoid","gaze":[{"char":"name","at":"English: whom or what this character looks at"}],"place":[{"char":"name","where":"English: left / right / centre and foreground / background"}],"lines":[{"char":"name","text":"Italian line","emotion":"neutral|happy|sad|angry|fearful|surprised","oncam":true}]}]}`;
@@ -765,7 +778,7 @@ async function pilotRun(items, fn) {
   await Promise.all([w(), w(), w()]);
   return { ok, err: null };
 }
-function imgEndpointsFor(p, shots) { return shots.map(s => (s.chars || []).some(n => charOfName(p, n).cast) ? 'seedream-v4-edit' : 'qwen-image-t2i'); }
+function imgEndpointsFor(p, shots) { return shots.map(s => (s.chars || []).some(n => charOfName(p, n).cast) ? kfEngine(p).ep : 'qwen-image-t2i'); }
 function voiceEndpointsFor(p, shots) {
   return shots.flatMap(s => (s.lines || []).slice(0, 1)).map(l => { const v = voiceOfChar(p, l.char); return v.startsWith('clone:') ? voceId() : 'minimax-speech-02-hd'; });
 }
@@ -778,6 +791,8 @@ async function rgPreparePart(pid, pi) {
   if (!ver.ok && !confirm(`Attenzione: ${ver.txt}\nPreparo comunque i fotogrammi?`)) return;
   const shots = p.parts[pi].shots.filter(s => { const st = shotState(s, p); return !st.clip && ['todo', 'err'].includes(st.st) && (!kfValid(p, s) || !voiceValid(p, s)); });
   const cost = shots.reduce((k, s) => { const c = costParts(p, s); return k + c.frame + c.voice; }, 0);
+  const unlinked = [...new Set(shots.flatMap(s => s.chars || []).filter(n => !charOfName(p, n).cast))];
+  if (unlinked.length && !confirm(`${unlinked.join(', ')} non ${unlinked.length > 1 ? 'sono collegati' : 'è collegato'} al Cast: il volto verrà inventato e cambierà da un fotogramma all'altro.\nCollegali in "3 · Personaggi" prima di continuare. Procedo lo stesso?`)) return;
   if (!rgBudgetOk(p, cost, 'Lo storyboard')) return;
   if (!r2On()) toast('Consiglio: con l\'archivio R2 attivo i fotogrammi non scadono e i volti del Cast funzionano meglio', 5000);
   try { await rgPreflight([...imgEndpointsFor(p, shots), ...voiceEndpointsFor(p, shots), r2On() ? montId() : null]); }
@@ -839,20 +854,26 @@ function lookOf(p) { const B = p.bible || {}; return B.look ? [B.look.style_en, 
 async function makeKeyframe(p, sh) {
   const look = lookOf(p);
   const refs = refsForShot(p, sh);
-  const who = refs.map(x => `reference image${x.n.length > 1 ? 's' : ''} ${x.n.join(' and ')} show ${x.c.name}`).join('; ');
+  const who = refs.map(x => `reference image${x.n.length > 1 ? 's' : ''} ${x.n.join(' and ')} show ${x.c.name}${x.c.master ? ` (image ${x.n[0]} is the locked MASTER sheet of ${x.c.name}: follow it over any text)` : ''}`).join('; ');
+  const lockTxt = refs.map(x => `${x.c.name} must look EXACTLY like ${x.c.master ? 'the master reference' : 'the reference photos'}: same face, same hair colour, length, texture and hairstyle, same age and body${x.c.master && x.c.master.traits_en ? ', ' + x.c.master.traits_en : ''}; ignore any different description of ${x.c.name}'s hair, face or age in the scene text.`).join(' ');
+  const chg = storyChangesFor(p, sh);
   const bl = blockingText(sh);
   const still = (sh.frame || sh.prompt) + (bl && !(sh.frame || '').includes(bl) ? ' ' + bl : '');
-  const kfPrompt = `Cinematic film still, ${RATIO_TXT[p.ratio] || RATIO_TXT['16:9']}. ${still} ${look ? 'Look: ' + look + '.' : ''} ${refs.length ? `${who}. Use exactly their faces, hairstyles and clothing; each person appears only once and is not mixed with the others.` : ''} Photorealistic, natural skin texture, correct anatomy with two arms and two hands per person, relaxed natural hands, nobody else in frame, matte screens and glass without reflections, no text.`;
+  const ident = refs.length ? `IDENTITY FIRST: ${who}. Keep exactly their faces, hairstyles and clothing; each person appears only once and is not mixed with the others. ${lockTxt} ${chg} ` : (chg ? chg + ' ' : '');
+  const kfPrompt = `${ident}Cinematic film still, ${RATIO_TXT[p.ratio] || RATIO_TXT['16:9']}. SCENE: ${still} ${look ? 'Look: ' + look + '.' : ''} Photorealistic, natural skin texture, correct anatomy with two arms and two hands per person, relaxed natural hands, nobody else in frame, matte screens and glass without reflections, no text.`;
   const neg = NEG_BASE + ', reflection, mirror image, clasped hands, vertical frame';
   const gen = async extra => {
     if (refs.length) {
       const imgs = [];
       for (const x of refs) for (const ph of x.ph) imgs.push(r2On() ? await toModelUrl(ph.img, 'cast-' + x.c.id + '-' + ph.id) : ph.img);
-      return await rpJob('seedream-v4-edit', { prompt: kfPrompt + extra, images: imgs, size: kfSize(p.ratio), enable_safety_checker: true });
+      const E = kfEngine(p);
+      if (E.ep === 'google-nano-banana-2-edit') return await rpJob(E.ep, { prompt: kfPrompt + extra, images: imgs.slice(0, 6), resolution: '1k', aspect_ratio: p.ratio, output_format: 'jpeg' });
+      return await rpJob(E.ep, { prompt: kfPrompt + extra, images: imgs, size: kfSize(p.ratio), enable_safety_checker: true });
     }
     return await rpJob('qwen-image-t2i', { prompt: kfPrompt + extra, negative_prompt: neg, size: kfSize(p.ratio), seed: -1, enable_safety_checker: true });
   };
   let url = await gen(''), kf;
+  // per i modelli che non rispettano il formato: un solo nuovo tentativo (vedi sotto)
   for (let tries = 0; tries < 2; tries++) {
     kf = { url, t: Date.now(), sig: kfSig(p, sh) };
     try { kf.img = await urlToJpeg(url, 480); const d = await imgDims(kf.img); if (d) { kf.w = d.w; kf.h = d.h; } } catch (e) { }
@@ -938,7 +959,7 @@ function openShot(p, pi, si) {
     <div class="actions">
       ${kfValid(p, sh) && !sh.ok && !s.clip ? '<button class="btn primary" id="shOk">✓ Fotogramma approvato</button>' : ''}
       ${kfValid(p, sh) && sh.ok ? `<button class="btn primary" id="shGo" ${s.st === 'run' || s.st === 'kf' ? 'disabled' : ''}>${s.clip ? '↻ Rigira solo il video' : '🎬 Gira il video'} · ≈ ${money(costParts(p, sh).video + costParts(p, sh).voice)}</button>` : ''}
-      <button class="btn" id="shKf" ${s.st === 'run' || s.st === 'kf' ? 'disabled' : ''}>${kfValid(p, sh) ? '↻ Rifai fotogramma' : '🖼 Crea fotogramma'} · ≈ ${money(KF_PRICE + costParts(p, sh).voice)}</button>
+      <button class="btn" id="shKf" ${s.st === 'run' || s.st === 'kf' ? 'disabled' : ''}>${kfValid(p, sh) ? '↻ Rifai fotogramma' : '🖼 Crea fotogramma'} · ≈ ${money(kfPrice(p, sh) + costParts(p, sh).voice)}</button>
       <button class="btn" id="shFix">✨ Rendi più realistico</button>
       ${s.clip ? '<button class="btn" id="shGal">Apri in Galleria</button>' : ''}
     </div>`;
@@ -1108,7 +1129,9 @@ function refsForShot(p, sh) {
   const per = casts.length === 1 ? 3 : casts.length === 2 ? 2 : 1;
   let n = 0;
   return casts.slice(0, 4).map(c => {
-    const ph = [...charPhotos(c)].sort((a, b) => order.indexOf(a.kind) - order.indexOf(b.kind)).slice(0, per);
+    let ph = [...charPhotos(c)].sort((a, b) => order.indexOf(a.kind) - order.indexOf(b.kind));
+    if (c.master) ph = [{ id: 'master-' + c.master.t, img: c.master.img, kind: 'master' }, ...ph.slice(0, Math.max(1, per - 1))];
+    else ph = ph.slice(0, per);
     const nums = ph.map(() => ++n);
     return { c, ph, n: nums };
   });
@@ -1176,4 +1199,13 @@ async function fillBlockingOne(pid, shId) {
   const tmp = [JSON.parse(JSON.stringify(sh))];
   await fillBlocking(p, tmp);
   rgShotMut(pid, shId, x => { x.gaze = tmp[0].gaze || []; x.place = tmp[0].place || []; });
+}
+
+/* cambi di aspetto: solo se la storia li chiede, dalla parte indicata in poi */
+function storyChangesFor(p, sh) {
+  const ch = (p.bible && p.bible.changes) || [];
+  if (!ch.length) return '';
+  const pi = p.parts.findIndex(pt => pt.shots.some(s => s.id === sh.id)) + 1;
+  return ch.filter(c => c && c.change_en && (sh.chars || []).some(n => String(n).toLowerCase() === String(c.char).toLowerCase()) && pi >= (+c.from_part || 1))
+    .map(c => `Story-required appearance change for ${c.char}: ${c.change_en}.`).join(' ');
 }

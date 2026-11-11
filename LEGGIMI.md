@@ -90,6 +90,10 @@ l'app ti dice se di solito la accetta. I contenuti sessuali espliciti non vengon
   e nel prompt dice quali foto sono di chi, così i volti non si mescolano;
 - ⭐ foto principale, ✏️ ritocco, 🗑, "Crea profilo e figura intera con l'AI" partendo dal volto;
 - 🗣 voce: scegli una voce AI oppure "🎙 Registra la sua voce" (leggi un breve testo, con il consenso della persona).
+**Master (versione 2.4).** Nella scheda: "Crea il master da tutte le foto" → una tavola con volto, tre quarti e figura intera
+(Nano Banana 2, circa 0,13 $). Puoi scrivere i "tratti che non devono mai cambiare". Quando lo blocchi 🔒 diventa il primo riferimento
+in ogni fotogramma e non cambia più (neanche aggiungendo foto), salvo "Rifai il master". Cambi di aspetto solo se la storia li chiede.
+I fotogrammi con i personaggi usano di base "Volti fedeli" (Nano Banana 2, circa 0,09 $); "Economico" (Seedream, circa 0,03 $) si sceglie nel passo 1.
 **Personaggio di fantasia:** "+ Nuovo" → "🧙 È un personaggio di fantasia". L'app ti fa poche domande (età, viso, capelli,
 vestiti, voce), crea la scheda fissa e il ritratto; profilo e figura intera solo se li chiedi.
 Nel Regista, "🎨 Crea con AI" apre la stessa intervista già compilata con quello che la storia sa del personaggio.

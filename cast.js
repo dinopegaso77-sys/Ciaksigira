@@ -27,7 +27,7 @@ function openCharSheet(id) {
   CS.id = id; charPhotos(c);
   $('#csTitle').textContent = c.name;
   $('#csName').value = c.name; $('#csDesc').value = c.desc || '';
-  renderCsPhotos(); renderCsVoice();
+  renderCsMaster(); renderCsPhotos(); renderCsVoice();
   openM('mCharSheet');
 }
 function renderCsPhotos() {
@@ -209,4 +209,46 @@ async function caSave() {
   if (CA.views) { b.textContent = 'Creo le viste…'; try { await createViews(c, ['profilo', 'figura']); } catch (e) { toast('Viste non riuscite: ' + e.message, 6000); } }
   closeM($('#mCharAI')); toast(`${c.name} è nel Cast ✓`);
   if (CA.onSaved) await CA.onSaved(c);
+}
+
+/* =================== MASTER del personaggio: tavola di riferimento bloccata =================== */
+const MASTER_PROMPT = 'Character reference sheet of the SAME single person shown in all the reference photos. One image with three views side by side on a plain light-grey studio background: left, a large front-facing head-and-shoulders portrait; centre, a three-quarter view portrait; right, a full-body front view standing with arms relaxed along the body. Keep EXACTLY the same face, facial features, hair (colour, length, texture, hairstyle), eyes, skin and body proportions as in the reference photos, and the same everyday outfit as in the first photo. Soft even light, photorealistic, natural skin texture, correct anatomy, no text, no labels, no other people.';
+function renderCsMaster() {
+  const c = csChar(); if (!c) return;
+  const box = $('#csMaster'), m = c.master, d = c.masterDraft;
+  if (m) {
+    box.innerHTML = `<div class="ms-img"><img src="${m.img}" alt=""><i class="lock">🔒 bloccato</i></div>
+      ${m.traits ? `<p class="small">Tratti fissi: <b>${esc(m.traits)}</b></p>` : ''}
+      <p class="muted small">Usato come primo riferimento in ogni fotogramma del Regista. Le foto qui sotto non lo cambiano.</p>
+      <button class="linkbtn" id="msRedo">Rifai il master</button>`;
+    $('#msRedo').onclick = () => { if (confirm(`Rifare il master di ${c.name}? I fotogrammi già fatti con lui andranno rifatti.`)) { c.master = null; c.masterDraft = null; saveChar(c); renderCsMaster(); } };
+    return;
+  }
+  box.innerHTML = `${d ? `<div class="ms-img"><img src="${d.img}" alt=""><i class="lock off">da approvare</i></div>` : ''}
+    <label>Tratti che non devono mai cambiare (facoltativo)<input id="msTraits" type="text" value="${esc(c.traitsIt || '')}" placeholder="Es. capelli neri lisci corti, occhi castani, nessun occhiale"></label>
+    <div class="actions">
+      <button class="btn ${d ? '' : 'primary'}" id="msMake">${d ? '↻ Rifai' : '🎨 Crea il master da tutte le foto'} (≈ 0,13 $)</button>
+      ${d ? '<button class="btn primary" id="msLock">🔒 Blocca come master</button>' : ''}
+    </div>
+    <p class="muted small" id="msStatus">${charPhotos(c).length < 2 ? 'Consiglio: carica almeno 2–3 foto (volto, profilo, figura intera) per un master fedele.' : ''}</p>`;
+  $('#msTraits').onchange = async () => { c.traitsIt = $('#msTraits').value.trim(); await saveChar(c); };
+  $('#msMake').onclick = async () => {
+    if (!key()) return toast('Collega prima RunPod');
+    c.traitsIt = $('#msTraits').value.trim();
+    const b = $('#msMake'); b.disabled = true; b.textContent = '🎨 RunPod crea il master…';
+    try {
+      const ph = [...charPhotos(c)].sort((a, b2) => ['volto', 'profilo', 'figura', 'altro'].indexOf(a.kind) - ['volto', 'profilo', 'figura', 'altro'].indexOf(b2.kind)).slice(0, 4);
+      const imgs = []; for (const p of ph) imgs.push(r2On() ? await toModelUrl(p.img, 'cast-' + c.id + '-' + p.id) : p.img);
+      const traits = c.traitsIt ? await toEnglish(c.traitsIt) : '';
+      const url = await rpJob('google-nano-banana-2-edit', { prompt: MASTER_PROMPT + (traits ? ' These traits must be exactly respected: ' + traits + '.' : ''), images: imgs, resolution: '2k', aspect_ratio: '16:9', output_format: 'jpeg' });
+      c.masterDraft = { img: await urlToJpeg(url, 1664), traits_en: traits, traits: c.traitsIt || '' };
+      await saveChar(c);
+    } catch (e) { toast('Master non riuscito: ' + e.message, 7000); }
+    renderCsMaster();
+  };
+  const lk = $('#msLock'); if (lk) lk.onclick = async () => {
+    c.master = { ...c.masterDraft, t: Date.now() }; c.masterDraft = null;
+    await saveChar(c); renderCsMaster(); renderChars();
+    toast(`Master di ${c.name} bloccato 🔒 Da ora è il riferimento in ogni scena`);
+  };
 }

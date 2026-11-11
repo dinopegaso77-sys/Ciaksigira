@@ -1,6 +1,6 @@
 /* Ciak si gira — generatore di clip video via RunPod Public Endpoints */
 'use strict';
-const APP_VERSION = '2.1'; // deve coincidere con ?v= in index.html
+const APP_VERSION = '2.3'; // deve coincidere con ?v= in index.html
 
 const API = 'https://api.runpod.ai/v2';
 const $ = s => document.querySelector(s);
@@ -153,7 +153,8 @@ function go(view) {
 }
 $$('.tab').forEach(t => t.onclick = () => go(t.dataset.view));
 
-function openM(id) { if (id === 'mSettings') return openSettings(); $('#' + id).classList.remove('hidden'); }
+let MZ = 80; // l'ultima finestra aperta resta sempre sopra le altre
+function openM(id) { if (id === 'mSettings') return openSettings(); const m = $('#' + id); m.style.zIndex = ++MZ; m.classList.remove('hidden'); }
 function closeM(m) {
   m.classList.add('hidden');
   m.querySelectorAll('video').forEach(v => v.pause());
@@ -590,29 +591,31 @@ function loadSettings(s) {
 }
 
 /* ---------- personaggi ---------- */
-let charImg = null;
+let charImg = null, charExtra = [];
 $('#charFile').onchange = async e => {
-  const f = e.target.files[0]; e.target.value = ''; if (!f) return;
-  try { charImg = await fileToJpeg(f, 1024); $('#charPreview').innerHTML = `<img src="${charImg}" alt="">`; } catch (err) { toast(err.message); }
+  const fs = [...e.target.files]; e.target.value = ''; if (!fs.length) return;
+  try {
+    const imgs = []; for (const f of fs.slice(0, 8)) imgs.push(await fileToJpeg(f, 1280));
+    charImg = imgs[0]; charExtra = imgs.slice(1);
+    $('#charPreview').innerHTML = `<img src="${charImg}" alt="">${charExtra.length ? `<i class="more">+${charExtra.length}</i>` : ''}`;
+  } catch (err) { toast(err.message); }
 };
 $('#charSave').onclick = async () => {
   const name = $('#charName').value.trim();
   if (!charImg) return toast('Scegli una foto del personaggio');
   if (!name) return toast('Dai un nome al personaggio');
-  const c = { id: uid(), name, desc: $('#charDesc').value.trim(), img: charImg, created: Date.now() };
+  const kinds = ['volto', 'profilo', 'figura', 'altro'];
+  const c = { id: uid(), name, desc: $('#charDesc').value.trim(), img: charImg, created: Date.now(),
+    photos: [charImg, ...charExtra].map((img, k) => ({ id: uid(), img, kind: kinds[Math.min(k, 3)] })) };
   await dbPut('chars', c); S.chars.push(c);
-  $('#charName').value = ''; $('#charDesc').value = ''; charImg = null; $('#charPreview').innerHTML = '<span>+ Foto</span>';
+  $('#charName').value = ''; $('#charDesc').value = ''; charImg = null; charExtra = []; $('#charPreview').innerHTML = '<span>+ Foto</span>';
   closeM($('#mChar')); renderChars(); renderRefChars(); toast(`${c.name} è nel cast ✓`);
 };
 function renderChars() {
   const box = $('#chars');
-  box.innerHTML = S.chars.length ? S.chars.map(c => `<div class="ch"><img src="${c.img}" alt=""><button class="ic" data-dc="${c.id}" title="Elimina">✕</button><button class="ic ed" data-pe="${c.id}" title="Ritocca la foto">✏️</button><div class="info"><b>${esc(c.name)}</b><small>${esc(c.desc || '')}</small></div></div>`).join('')
+  box.innerHTML = S.chars.length ? S.chars.map(c => `<button class="ch" data-cs="${c.id}"><img src="${c.img}" alt=""><span class="ch-b">${(c.photos || []).length > 1 ? `<i>📷 ${c.photos.length}</i>` : ''}${c.voiceId ? `<i>${c.voiceId.startsWith('clone:') ? '🎙' : '🗣'}</i>` : ''}</span><div class="info"><b>${esc(c.name)}</b><small>${esc(c.desc || '')}</small></div></button>`).join('')
     : '<div class="empty">Il cast è vuoto.<br>Tocca "+ Nuovo" per aggiungere un personaggio.</div>';
-  box.querySelectorAll('[data-pe]').forEach(b => b.onclick = () => window.openPhotoEdit && openPhotoEdit(b.dataset.pe));
-  box.querySelectorAll('[data-dc]').forEach(b => b.onclick = async () => {
-    if (!confirm('Eliminare questo personaggio?')) return;
-    await dbDel('chars', b.dataset.dc); S.chars = S.chars.filter(c => c.id !== b.dataset.dc); S.selChars.delete(b.dataset.dc); renderChars(); renderRefChars();
-  });
+  box.querySelectorAll('[data-cs]').forEach(b => b.onclick = () => window.openCharSheet && openCharSheet(b.dataset.cs));
 }
 
 /* ---------- impostazioni ---------- */
@@ -624,7 +627,7 @@ function keySummary() {
 function openSettings() {
   $('#setKey').value = key(); status('');
   $('#secKey').open = !key();
-  keySummary(); if (window.montSummary) montSummary(); if (window.r2Summary) r2Summary(); $('#mSettings').classList.remove('hidden');
+  keySummary(); if (window.montSummary) montSummary(); if (window.r2Summary) r2Summary(); $('#mSettings').style.zIndex = ++MZ; $('#mSettings').classList.remove('hidden');
 }
 $('#showKey').onclick = () => { const i = $('#setKey'); i.type = i.type === 'password' ? 'text' : 'password'; $('#showKey').textContent = i.type === 'password' ? 'Mostra' : 'Nascondi'; };
 async function storeKey() { S.apiKey = $('#setKey').value.trim(); await encryptKey(S.apiKey); keySummary(); }

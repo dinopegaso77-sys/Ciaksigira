@@ -16,7 +16,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Kalam:wght@400;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=2.1">
+<link rel="stylesheet" href="style.css?v=2.3">
 </head>
 <body>
 
@@ -318,7 +318,7 @@
     </details>
 
     <button class="btn big" id="lockNow">🔒 Blocca l'app</button>
-    <p class="muted small ver">Ciak si gira · versione <b id="appVer">2.1</b></p>
+    <p class="muted small ver">Ciak si gira · versione <b id="appVer">2.3</b></p>
   </div>
 </div>
 
@@ -425,6 +425,37 @@
   </div>
 </div>
 
+<div class="modal hidden" id="mCharSheet">
+  <div class="mbox wide">
+    <div class="mhead"><h2 class="chalk" id="csTitle">Personaggio</h2><button class="x" data-close>✕</button></div>
+    <div class="row2">
+      <label>Nome<input id="csName" type="text"></label>
+      <label>Descrizione fissa<input id="csDesc" type="text"></label>
+    </div>
+    <div class="cs-sec"><b>📷 Foto</b><span class="muted small">Più foto = più inquadrature riuscite. Il Regista sceglie da solo quelle adatte a ogni scena.</span></div>
+    <div id="csPhotos" class="cs-photos"></div>
+    <div class="actions">
+      <label class="btn" for="csFile">＋ Aggiungi foto</label><input type="file" id="csFile" accept="image/*" multiple>
+      <button class="btn hidden" id="csViews">🎨 Crea profilo e figura intera (≈ 0,06 $)</button>
+    </div>
+    <div class="cs-sec"><b>🗣 Voce</b><span class="muted small">Usata dal Regista per le sue battute.</span></div>
+    <div class="cs-voice">
+      <select id="csVoice" aria-label="Voce del personaggio"></select>
+      <button class="btn" id="csVoiceTest">🔊 Prova</button>
+      <button class="btn" id="csVoiceRec">🎙 Registra la sua voce</button>
+    </div>
+    <p class="muted small" id="csVoiceNote"></p>
+    <button class="linkbtn" id="csDel">Elimina personaggio</button>
+  </div>
+</div>
+
+<div class="modal hidden" id="mCharAI">
+  <div class="mbox">
+    <div class="mhead"><h2 class="chalk">Personaggio di fantasia</h2><button class="x" data-close>✕</button></div>
+    <div id="caBody"></div>
+  </div>
+</div>
+
 <div class="modal hidden" id="mPhotoEdit">
   <div class="mbox">
     <div class="mhead"><h2 class="chalk">Ritocca la foto</h2><button class="x" data-close>✕</button></div>
@@ -459,18 +490,19 @@
 <div class="modal hidden" id="mChar">
   <div class="mbox">
     <div class="mhead"><h2 class="chalk">Nuovo personaggio</h2><button class="x" data-close>✕</button></div>
-    <p class="muted small">Foto chiara del volto, frontale e con buona luce — oppure fallo creare all'AI dalla descrizione.</p>
+    <button class="ai-path" id="charFantasy"><b>🧙 È un personaggio di fantasia</b><span>Ti faccio qualche domanda e creo io volto, aspetto e voce</span></button>
+    <div class="or"><span>oppure ho le foto</span></div>
+    <p class="muted small">Puoi scegliere più foto insieme: volto frontale, profilo, figura intera. Meglio se nella foto c'è solo lui, con buona luce.</p>
     <div class="charform">
       <label class="photo" id="charPick">
         <div id="charPreview" class="charph"><span>+ Foto</span></div>
-        <input type="file" id="charFile" accept="image/*">
+        <input type="file" id="charFile" accept="image/*" multiple>
       </label>
       <div class="grow">
         <label>Nome<input id="charName" type="text" placeholder="Es. Elena"></label>
         <label>Descrizione fissa<input id="charDesc" type="text" placeholder="Es. donna sui 35 anni, capelli rossi corti"></label>
       </div>
     </div>
-    <button class="btn" id="charAi">🎨 Crea la foto con l'AI dalla descrizione (≈ 0,02 $)</button>
     <button class="btn primary big" id="charSave">Salva personaggio</button>
   </div>
 </div>
@@ -560,12 +592,13 @@
 </div>
 
 <div id="toast" class="toast"></div>
-<script src="models.js?v=2.1"></script>
-<script src="app.js?v=2.1"></script>
-<script src="montaggio.js?v=2.1"></script>
-<script src="libreria.js?v=2.1"></script>
-<script src="voce.js?v=2.1"></script>
-<script src="sottotitoli.js?v=2.1"></script>
-<script src="regista.js?v=2.1"></script>
+<script src="models.js?v=2.3"></script>
+<script src="app.js?v=2.3"></script>
+<script src="montaggio.js?v=2.3"></script>
+<script src="libreria.js?v=2.3"></script>
+<script src="voce.js?v=2.3"></script>
+<script src="sottotitoli.js?v=2.3"></script>
+<script src="cast.js?v=2.3"></script>
+<script src="regista.js?v=2.3"></script>
 </body>
 </html>

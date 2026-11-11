@@ -67,10 +67,14 @@ Scheda **Regista**: dall'idea scritta, o dal copione/master in PDF, al film.
    trama in parti con i tempi e, per ogni parte, le inquadrature con il prompt adatto al modello scelto.
 3. **Personaggi** — collega ognuno a una foto del Cast, oppure "🎨 Crea con AI". Scegli la voce:
    una voce AI oppure una tua voce clonata.
-4. **Gira la parte** — per ogni inquadratura:
-   - voce della battuta (MiniMax o voce clonata);
-   - fotogramma iniziale con i volti del Cast (Seedream);
-   - ciak animato dal fotogramma. Chi parla in camera viene girato con InfiniteTalk, con le labbra a tempo.
+4. **Per ogni parte, in tre passi (si paga solo quello che serve):**
+   1. **Storyboard** (circa 0,03 $ a inquadratura): voce della battuta e fotogramma iniziale con i volti del Cast,
+      salvati in R2 così non scadono. Nessun video ancora.
+   2. **Approva:** guarda i fotogrammi; approva quelli buoni e rifai solo quelli sbagliati (↻ Rifai fotogramma).
+   3. **Gira gli approvati:** parte prima un ciak di prova e, se RunPod lo accetta, gli altri.
+      Chi parla in camera viene girato con InfiniteTalk, con le labbra a tempo.
+   - "Rigira solo il video" non ripaga fotogramma e voce. Prima di ogni spesa l'app controlla gratis che i servizi rispondano.
+   - **Budget:** se imposti un budget massimo, la barra in basso mostra "speso" e "per finire" e l'app avvisa prima di superarlo.
 5. **Manda al montaggio** — i ciak vanno in ordine sulla traccia video e le battute sulla traccia voce.
    Dopo "Monta il film", in 💬 Sottotitoli le frasi italiane sono già pronte: premi "Traduci in inglese".
 
@@ -81,7 +85,16 @@ movimento semplice e fisico, e le scene complesse diventano ciak più corti.
 **Contenuti +18.** La storia viene classificata (per tutti, temi adulti, violenza, esplicito) e per il modello scelto
 l'app ti dice se di solito la accetta. I contenuti sessuali espliciti non vengono generati: c'è "Rendi suggerito".
 
-**Cast.** ✏️ su ogni personaggio per ritoccare la foto (togliere persone, mani o braccia estranee, oggetti, sfondo);
+**Cast (versione 2.3).** Tocca un personaggio per aprire la sua scheda:
+- più foto, ognuna con il tipo (volto, profilo, figura intera): il Regista sceglie da solo quelle adatte a ogni inquadratura
+  e nel prompt dice quali foto sono di chi, così i volti non si mescolano;
+- ⭐ foto principale, ✏️ ritocco, 🗑, "Crea profilo e figura intera con l'AI" partendo dal volto;
+- 🗣 voce: scegli una voce AI oppure "🎙 Registra la sua voce" (leggi un breve testo, con il consenso della persona).
+**Personaggio di fantasia:** "+ Nuovo" → "🧙 È un personaggio di fantasia". L'app ti fa poche domande (età, viso, capelli,
+vestiti, voce), crea la scheda fissa e il ritratto; profilo e figura intera solo se li chiedi.
+Nel Regista, "🎨 Crea con AI" apre la stessa intervista già compilata con quello che la storia sa del personaggio.
+
+**Ritocco foto.** ✏️ su ogni personaggio per ritoccare la foto (togliere persone, mani o braccia estranee, oggetti, sfondo);
 puoi annullare l'ultimo ritocco o tornare all'originale. **Crea:** ✨ Crea prompt trasforma la tua idea in un prompt
 per il modello scelto, con le regole contro mani in più, arti tagliati e volti che cambiano.
 

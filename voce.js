@@ -253,12 +253,14 @@ async function cloneGo() {
 
 /* ---- nuova voce: registra o carica il campione ---- */
 const VN = { mr: null, chunks: [], blob: null, t0: 0, timer: 0, dur: 0 };
-function openVoceNew() {
-  VN.blob = null; VN.dur = 0; $('#vnName').value = ''; $('#vnOk').checked = false; $('#vnStatus').textContent = '';
+function openVoceNew(opts) {
+  opts = opts && opts.name !== undefined ? opts : {};
+  VN.onSaved = opts.onSaved || null;
+  VN.blob = null; VN.dur = 0; $('#vnName').value = opts.name || ''; $('#vnOk').checked = false; $('#vnStatus').textContent = '';
   $('#vnPrev').classList.add('hidden'); $('#vnTime').textContent = '0:00'; $('#vnRec').textContent = '● Registra'; $('#vnRec').classList.remove('on');
   $('#vnText').textContent = READ_TEXT[$('#vnLang').value] || READ_TEXT.it; vnCheck(); openM('mVoceNew');
 }
-$('#voCloneNew').onclick = openVoceNew;
+$('#voCloneNew').onclick = () => openVoceNew();
 $('#vnLang').onchange = () => { $('#vnText').textContent = READ_TEXT[$('#vnLang').value] || READ_TEXT.it; };
 function vnCheck() { $('#vnSave').disabled = !(VN.blob && $('#vnOk').checked && $('#vnName').value.trim()); }
 $('#vnOk').onchange = vnCheck; $('#vnName').oninput = vnCheck;
@@ -304,8 +306,9 @@ $('#vnSave').onclick = async () => {
       try { key = (await uploadToR2(VN.blob, `${safeFile(name)}-campione.${ext}`, 'voci')).key; } catch (e) { }
     }
     saveProfiles([{ id, name, lang, key, created: Date.now(), dur: Math.round(VN.dur) }, ...voiceProfiles()]);
-    ls('voiceClone', id); fillClones(id); $('#voLang').value = lang; voSetMode('clone');
-    closeM($('#mVoceNew')); toast(`Voce "${name}" salvata ✓ Ora scrivi il testo e premi Genera`);
+    closeM($('#mVoceNew'));
+    if (VN.onSaved) { const cb = VN.onSaved; VN.onSaved = null; await cb(id, name); }
+    else { ls('voiceClone', id); fillClones(id); $('#voLang').value = lang; voSetMode('clone'); toast(`Voce "${name}" salvata ✓ Ora scrivi il testo e premi Genera`); }
   } catch (e) { toast('Salvataggio non riuscito: ' + e.message); }
   btn.textContent = 'Salva la voce'; vnCheck();
 };

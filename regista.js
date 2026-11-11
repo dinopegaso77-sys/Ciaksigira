@@ -99,9 +99,40 @@ function nearestDur(engine, want) {
 /* =================== testo con Qwen3 32B su RunPod =================== */
 const LLM_EP = 'qwen3-32b-awq';
 const wait = ms => new Promise(r => setTimeout(r, ms));
-async function llm(system, user, maxTokens = 3000, onWait) {
-  const prompt = `<|im_start|>system\n${system}<|im_end|>\n<|im_start|>user\n${user}<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n`;
-  const r = await rp(`/${LLM_EP}/run`, { method: 'POST', body: JSON.stringify({ input: { prompt, max_tokens: maxTokens, temperature: 0.6, top_p: 0.9 } }) });
+/* ogni spesa va nel totale dell'app e, durante un lavoro del Regista, anche nel conto del progetto */
+function addSpend(c) {
+  if (!(c > 0)) return;
+  ls('spent', String((parseFloat(ls('spent')) || 0) + c)); showSpent();
+  if (RG.spendTo) rgMut(RG.spendTo, p => { p.spent = (p.spent || 0) + c; });
+}
+function llmCost(o0, maxTokens) {
+  const u = o0 && o0.usage;
+  const cost = (o0 && typeof o0.cost === 'number') ? o0.cost : u ? ((u.input || u.prompt_tokens || 0) + (u.output || u.completion_tokens || 0)) / 1e6 * 10 : maxTokens / 1e6 * 10;
+  addSpend(cost);
+}
+function cleanLLM(t) {
+  t = String(t || '');
+  t = t.replace(/<think>[\s\S]*?<\/think>/g, '');
+  if (t.includes('</think>')) t = t.slice(t.lastIndexOf('</think>') + 8);
+  return t.replace(/<\|im_end\|>[\s\S]*$/, '').replace(/^\s*<think>\s*/, '').trim();
+}
+/* 1ª via: endpoint "chat" compatibile OpenAI (applica il formato giusto per Qwen3) */
+async function llmChat(system, user, maxTokens) {
+  const r = await rp(`/${LLM_EP}/openai/v1/chat/completions`, { method: 'POST', body: JSON.stringify({
+    model: 'Qwen/Qwen3-32B-AWQ', max_tokens: maxTokens, temperature: 0.6, top_p: 0.9,
+    messages: [{ role: 'system', content: system }, { role: 'user', content: user + '\n/no_think' }],
+    chat_template_kwargs: { enable_thinking: false }
+  }) });
+  const c = r && r.choices && r.choices[0];
+  const t = c && ((c.message && c.message.content) || c.text);
+  if (!t) throw new Error('nessun testo dalla via chat');
+  llmCost(r, maxTokens);
+  return cleanLLM(t);
+}
+/* 2ª via: endpoint nativo con il formato di Qwen3 scritto a mano */
+async function llmNative(system, user, maxTokens, onWait) {
+  const prompt = `<|im_start|>system\n${system}<|im_end|>\n<|im_start|>user\n${user}\n/no_think<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n`;
+  const r = await rp(`/${LLM_EP}/run`, { method: 'POST', body: JSON.stringify({ input: { prompt, max_tokens: maxTokens, temperature: 0.6, top_p: 0.9, stop: '<|im_end|>' } }) });
   let out = r.status === 'COMPLETED' ? r.output : null;
   for (let n = 0; out == null && r.id && n < 160; n++) {
     await wait(2500);
@@ -110,25 +141,63 @@ async function llm(system, user, maxTokens = 3000, onWait) {
     else if (BAD.includes(s.status)) throw new Error(s.error || s.status);
     else if (onWait) onWait(s.status);
   }
-  const o0 = Array.isArray(out) ? out[0] : out, u = o0 && o0.usage;
-  const cost = (o0 && typeof o0.cost === 'number') ? o0.cost : u ? ((u.input || u.prompt_tokens || 0) + (u.output || u.completion_tokens || 0)) / 1e6 * 10 : maxTokens / 1e6 * 10;
-  ls('spent', String((parseFloat(ls('spent')) || 0) + cost)); showSpent();
+  llmCost(Array.isArray(out) ? out[0] : out, maxTokens);
   const t = deepText(out);
   if (!t) throw new Error('il modello di testo non ha risposto');
-  return t.replace(/<think>[\s\S]*?<\/think>/g, '').trim();
+  return cleanLLM(t);
+}
+async function llm(system, user, maxTokens = 3000, onWait, wantJSON) {
+  let t = '';
+  if (onWait) onWait('RUN');
+  try { t = await llmChat(system, user, maxTokens); }
+  catch (e) { if (/Chiave/.test(e.message)) throw e; }
+  if (!t || (wantJSON && t.indexOf('{') < 0)) t = await llmNative(system, user, maxTokens, onWait);
+  try { ls('llmLast', t.slice(0, 4000)); } catch (e) { }
+  return t;
+}
+/* chiude un JSON rimasto tagliato a metà (risposta troppo lunga) */
+function closeJSON(s) {
+  const st = []; let inS = false, esc2 = false, lastSafe = 0;
+  for (let i = 0; i < s.length; i++) {
+    const ch = s[i];
+    if (inS) { if (esc2) esc2 = false; else if (ch === '\\') esc2 = true; else if (ch === '"') inS = false; continue; }
+    if (ch === '"') inS = true;
+    else if (ch === '{' || ch === '[') st.push(ch === '{' ? '}' : ']');
+    else if (ch === '}' || ch === ']') { st.pop(); lastSafe = i + 1; }
+    else if (ch === ',') lastSafe = i;
+  }
+  let out = s;
+  if (inS || st.length) {
+    out = s.slice(0, lastSafe).replace(/,\s*$/, '');
+    const st2 = [];
+    let q = false, e2 = false;
+    for (const ch of out) {
+      if (q) { if (e2) e2 = false; else if (ch === '\\') e2 = true; else if (ch === '"') q = false; continue; }
+      if (ch === '"') q = true; else if (ch === '{') st2.push('}'); else if (ch === '[') st2.push(']'); else if (ch === '}' || ch === ']') st2.pop();
+    }
+    out += st2.reverse().join('');
+  }
+  return out;
 }
 function parseJSON(t) {
-  t = t.replace(/```(?:json)?/gi, '').trim();
-  const a = t.indexOf('{'), b = t.lastIndexOf('}');
-  if (a < 0 || b < a) throw new Error('risposta non valida');
-  const s = t.slice(a, b + 1);
-  try { return JSON.parse(s); } catch (e) { return JSON.parse(s.replace(/,\s*([}\]])/g, '$1').replace(/[“”]/g, '"')); }
+  t = String(t).replace(/```(?:json)?/gi, '').trim();
+  const a = t.indexOf('{');
+  if (a < 0) throw new Error('risposta non valida: «' + t.slice(0, 140).replace(/\s+/g, ' ') + '»');
+  const b = t.lastIndexOf('}');
+  const tries = [t.slice(a, b + 1), closeJSON(t.slice(a))];
+  for (const s of tries) {
+    if (!s) continue;
+    try { return JSON.parse(s); } catch (e) { }
+    try { return JSON.parse(s.replace(/,\s*([}\]])/g, '$1').replace(/[“”]/g, '"')); } catch (e) { }
+  }
+  throw new Error('risposta non valida: «' + t.slice(a, a + 140).replace(/\s+/g, ' ') + '…»');
 }
 async function llmJSON(system, user, maxTokens, onWait) {
-  try { return parseJSON(await llm(system, user, maxTokens, onWait)); }
+  const sys = system + '\nYour whole answer must be ONE JSON object that starts with { and ends with }. No markdown, no explanations.';
+  try { return parseJSON(await llm(sys, user, maxTokens, onWait, true)); }
   catch (e) {
     if (/Chiave|401|403/.test(e.message)) throw e;
-    return parseJSON(await llm(system, user + '\n\nIMPORTANT: reply with ONE valid JSON object only, no comments.', maxTokens, onWait));
+    return parseJSON(await llm(sys, user + '\n\nIMPORTANT: reply with ONE valid JSON object only, keep every text short.', Math.round(maxTokens * 1.3), onWait, true));
   }
 }
 async function toEnglish(txt) {
@@ -152,7 +221,7 @@ async function rpJob(endpoint, input, maxWait = 300) {
   const url = typeof out === 'string' ? out : (out.result || out.image_url || out.url || (out.images && out.images[0]));
   if (!url) throw new Error('RunPod non ha restituito l\'immagine');
   const cost = typeof out.cost === 'number' ? out.cost : 0.03;
-  ls('spent', String((parseFloat(ls('spent')) || 0) + cost)); showSpent();
+  addSpend(cost);
   return url;
 }
 async function urlToJpeg(url, max = 1024) {
@@ -201,24 +270,27 @@ const PE_PRESETS = [
   ['Luce da ritratto', 'Improve the light like a professional portrait: soft key light, gentle shadows, sharp focus, natural skin texture.'],
   ['Togli scritte e loghi', 'Remove all text, logos and watermarks.']
 ];
-const PE = { id: null, sel: new Set() };
-function openPhotoEdit(id) {
+const PE = { id: null, ph: null, sel: new Set() };
+function peChar() { return S.chars.find(x => x.id === PE.id); }
+function pePhoto(c) { const ph = charPhotos(c); return ph.find(p => p.id === PE.ph) || ph[0]; }
+function openPhotoEdit(id, photoId) {
   const c = S.chars.find(x => x.id === id); if (!c) return;
-  PE.id = id; PE.sel.clear();
-  $('#peImg').src = c.img; $('#peText').value = ''; $('#peStatus').textContent = '';
+  PE.id = id; PE.ph = photoId || charPhotos(c)[0].id; PE.sel.clear();
+  $('#peImg').src = pePhoto(c).img; $('#peText').value = ''; $('#peStatus').textContent = '';
   $('#pePresets').innerHTML = PE_PRESETS.map((p, i) => `<button class="chip" data-pp="${i}">${p[0]}</button>`).join('');
   $$('#pePresets [data-pp]').forEach(b => b.onclick = () => { const i = +b.dataset.pp; PE.sel.has(i) ? PE.sel.delete(i) : PE.sel.add(i); b.classList.toggle('on', PE.sel.has(i)); });
   peButtons(c); openM('mPhotoEdit');
 }
-function peButtons(c) { $('#peUndo').disabled = !(c.hist && c.hist.length); $('#peOrig').disabled = !c.orig || c.orig === c.img; }
+function peButtons(c) { const p = pePhoto(c); $('#peUndo').disabled = !(p.hist && p.hist.length); $('#peOrig').disabled = !p.orig || p.orig === p.img; }
 async function setCharImg(c, img, keepHist = true) {
-  if (keepHist) { c.hist = [...(c.hist || []), c.img].slice(-5); if (!c.orig) c.orig = c.img; }
-  c.img = img; delete c.r2key;
-  await dbPut('chars', c); renderChars(); renderRefChars(); $('#peImg').src = img; peButtons(c);
-  if (window.renderRegia && $('#view-regista').classList.contains('active')) renderRegia();
+  const p = pePhoto(c);
+  if (keepHist) { p.hist = [...(p.hist || []), p.img].slice(-5); if (!p.orig) p.orig = p.img; }
+  p.img = img;
+  await saveChar(c); $('#peImg').src = img; peButtons(c);
+  if ($('#mCharSheet') && !$('#mCharSheet').classList.contains('hidden')) renderCsPhotos();
 }
 $('#peGo').onclick = async () => {
-  const c = S.chars.find(x => x.id === PE.id); if (!c) return;
+  const c = peChar(); if (!c) return;
   if (!key()) return toast('Collega prima RunPod');
   const free = $('#peText').value.trim();
   if (!PE.sel.size && !free) return toast('Scegli un ritocco o scrivi cosa cambiare');
@@ -227,41 +299,33 @@ $('#peGo').onclick = async () => {
     let instr = [...PE.sel].map(i => PE_PRESETS[i][1]).join(' ');
     if (free) instr += ' ' + await toEnglish(free);
     instr += ' Keep the main person\'s face, identity, expression, hairstyle, body and clothing exactly the same. Photorealistic, natural anatomy, no extra limbs.';
-    const image = r2On() ? await toModelUrl(c.img, 'ritocco-' + c.id) : c.img;
+    const p = pePhoto(c);
+    const image = r2On() ? await toModelUrl(p.img, 'ritocco-' + c.id + '-' + p.id) : p.img;
     const url = await rpJob('qwen-image-edit', { prompt: instr, image, negative_prompt: 'extra people, extra hands, extra arms, deformed, blurry, changed face', seed: -1, output_format: 'jpeg', enable_safety_checker: true });
     await setCharImg(c, await urlToJpeg(url, 1280));
     st.textContent = 'Fatto ✓ Se non ti piace premi "Annulla l\'ultimo".';
   } catch (e) { st.textContent = 'Ritocco non riuscito: ' + e.message; }
   btn.disabled = false; $('#peBusy').classList.add('hidden');
 };
-$('#peUndo').onclick = async () => { const c = S.chars.find(x => x.id === PE.id); if (!c || !c.hist || !c.hist.length) return; const prev = c.hist.pop(); await setCharImg(c, prev, false); };
-$('#peOrig').onclick = async () => { const c = S.chars.find(x => x.id === PE.id); if (!c || !c.orig) return; await setCharImg(c, c.orig); };
+$('#peUndo').onclick = async () => { const c = peChar(); if (!c) return; const p = pePhoto(c); if (!p.hist || !p.hist.length) return; const prev = p.hist.pop(); await setCharImg(c, prev, false); };
+$('#peOrig').onclick = async () => { const c = peChar(); if (!c) return; const p = pePhoto(c); if (!p.orig) return; await setCharImg(c, p.orig); };
 
 async function aiPortrait(name, look) {
   const prompt = `Photorealistic cinematic character reference portrait of ${look}. Front view, from the chest up, looking at the camera with a neutral relaxed expression, plain neutral grey studio background, soft key light, sharp focus, natural skin texture, 50mm lens. Only one person in the image, both shoulders visible, no hands in front of the body, no text.`;
   const url = await rpJob('qwen-image-t2i', { prompt, negative_prompt: 'extra people, extra hands, extra fingers, deformed face, cartoon, cgi, text, watermark, blurry', size: '1024*1024', seed: -1, enable_safety_checker: true });
   return await urlToJpeg(url, 1024);
 }
-$('#charAi').onclick = async () => {
-  const desc = $('#charDesc').value.trim(), name = $('#charName').value.trim();
-  if (!desc) { toast('Scrivi prima la descrizione (età, viso, capelli, vestiti)'); return $('#charDesc').focus(); }
-  if (!key()) return toast('Collega prima RunPod');
-  const btn = $('#charAi'); btn.disabled = true; btn.textContent = '🎨 RunPod disegna…';
-  try {
-    const look = await toEnglish(`${name ? name + ', ' : ''}${desc}`);
-    charImg = await aiPortrait(name, look);
-    $('#charPreview').innerHTML = `<img src="${charImg}" alt="">`;
-    toast('Foto pronta: se ti piace salva il personaggio, altrimenti riprova');
-  } catch (e) { toast('Foto non riuscita: ' + e.message, 6000); }
-  btn.disabled = false; btn.textContent = '🎨 Crea la foto con l\'AI dalla descrizione (≈ 0,02 $)';
-};
-
 /* =================== REGISTA: progetti =================== */
 const RG = { cur: null, busy: new Map(), thinking: null };
 function rgList() { try { return JSON.parse(ls('regie') || '[]'); } catch (e) { return []; } }
 function rgSaveAll(list) { ls('regie', JSON.stringify(list)); }
 function rgProj() { return rgList().find(p => p.id === RG.cur) || null; }
-function rgSave(p) { const l = rgList(); const i = l.findIndex(x => x.id === p.id); if (i < 0) l.unshift(p); else l[i] = p; rgSaveAll(l); }
+function rgSave(p) { const l = rgList(); const i = l.findIndex(x => x.id === p.id); if (i < 0) l.unshift(p); else { if (l[i].spent > (p.spent || 0)) p.spent = l[i].spent; l[i] = p; } rgSaveAll(l); }
+/* modifiche sicure durante i lavori lunghi: rilegge sempre il progetto aggiornato */
+function rgMut(pid, fn) { const l = rgList(); const p = l.find(x => x.id === pid); if (!p) return null; fn(p); rgSaveAll(l); return p; }
+function rgFind(p, shId) { for (const pt of p.parts) { const s = pt.shots.find(x => x.id === shId); if (s) return s; } return null; }
+function rgShotMut(pid, shId, fn) { return rgMut(pid, p => { const s = rgFind(p, shId); if (s) fn(s, p); }); }
+const hashStr = s => { let h = 5381; for (let i = 0; i < s.length; i++) h = ((h << 5) + h + s.charCodeAt(i)) | 0; return (h >>> 0).toString(36); };
 function rgNewProj() {
   return { id: uid(), created: Date.now(), idea: '', length: 60, genre: 'Drammatico realistico', ratio: '16:9', engine: 'wan', audio: false, dialog: 'pochi', lipsync: true, script: null, bible: null, parts: [] };
 }
@@ -274,31 +338,44 @@ function charOfName(p, name) {
   const cast = ch && ch.castId && S.chars.find(c => c.id === ch.castId);
   return { ch, cast };
 }
-function shotState(sh) {
+function shotState(sh, p) {
   const job = S.jobs.find(j => j.settings && j.settings.rgShot === sh.id);
   const clip = S.clips.find(c => c.settings && c.settings.rgShot === sh.id);
   if (RG.busy.has(sh.id)) return { st: 'kf', label: RG.busy.get(sh.id) };
   if (job && !job.done) return { st: 'run', label: 'Si gira', job };
-  if (job && job.error && (!clip || job.created > clip.created)) return { st: 'err', label: 'Errore', err: job.error, job };
-  if (sh.err) return { st: 'err', label: 'Errore', err: sh.err };
+  if (job && job.error && (!clip || job.created > clip.created)) return { st: 'err', label: 'Errore', err: job.error, job, clip };
+  if (sh.err) return { st: 'err', label: 'Errore', err: sh.err, clip };
   if (clip) return { st: 'ok', label: 'Pronto', clip };
-  return { st: 'todo', label: 'Da girare' };
+  p = p || rgProj();
+  if (p && kfValid(p, sh)) return sh.ok ? { st: 'appr', label: 'Approvato' } : { st: 'frame', label: 'Da approvare' };
+  return { st: 'todo', label: 'Da preparare' };
 }
-function shotCost(p, sh) {
-  const tts = (sh.lines || []).reduce((k, l) => k + l.text.length * 0.00005, 0);
-  if (isTalk(p, sh)) return 0.5 + 0.03 + tts;
-  const m = MODELS[p.engine];
-  const o = { engine: p.engine, duration: nearestDur(p.engine, sh.dur), res: m.defRes || '720p', ratio: p.ratio, audio: p.audio, ex: {}, startImg: 'x', img: 'x', charImgs: [] };
-  let c = 0; try { c = m.price(o); } catch (e) { }
-  return c + (needsKeyframe(p, sh) ? 0.03 : 0) + tts;
+/* il fotogramma vale finché non cambiano prompt, look, volti, formato o voce in camera; dura 7 giorni su RunPod, per sempre in R2 */
+function kfSig(p, sh) {
+  const B = p.bible || {}, look = B.look ? JSON.stringify(B.look) : '';
+  const casts = (sh.chars || []).map(n => { const c = charOfName(p, n).cast; return c ? c.id + ':' + charPhotos(c).map(x => x.kind + x.img.length + x.img.slice(-12)).join(',') : n; }).join('|');
+  return hashStr([sh.prompt, look, p.ratio, casts, isTalk(p, sh) ? 'talk' : ''].join('#'));
 }
+const kfFresh = kf => !!kf && (Date.now() - kf.t < 6.5 * 864e5 || !!kf.key);
+function kfValid(p, sh) { return !!(sh.kf && sh.kf.sig === kfSig(p, sh) && kfFresh(sh.kf)); }
+function voiceValid(p, sh) {
+  const line = p.dialog !== 'no' ? (sh.lines || [])[0] : null;
+  if (!line) return true;
+  const v = sh.voice; return !!(v && v.text === line.text && v.vid === voiceOfChar(p, line.char) && v.emotion === line.emotion);
+}
+const KF_PRICE = 0.03;
+function costParts(p, sh) {
+  const voice = voiceValid(p, sh) ? 0 : (sh.lines || []).slice(0, 1).reduce((k, l) => k + l.text.length * 0.00005, 0);
+  const frame = kfValid(p, sh) ? 0 : KF_PRICE;
+  let video = 0;
+  if (isTalk(p, sh)) video = 0.5;
+  else { const m = MODELS[p.engine]; try { video = m.price({ engine: p.engine, duration: nearestDur(p.engine, sh.dur), res: m.defRes || '720p', ratio: p.ratio, audio: p.audio, ex: {}, startImg: 'x', img: 'x', charImgs: [] }); } catch (e) { } }
+  return { voice, frame, video };
+}
+function shotCost(p, sh) { const c = costParts(p, sh); return c.voice + c.frame + c.video; }
 function isTalk(p, sh) { const l = (sh.lines || [])[0]; return !!(l && l.oncam && p.lipsync !== false && p.dialog !== 'no'); }
-function needsKeyframe(p, sh) {
-  if (isTalk(p, sh)) return true;
-  const m = MODELS[p.engine];
-  if (m.needs.image === 'no') return false;
-  return m.needs.image === 'req' || (sh.chars || []).some(n => charOfName(p, n).cast);
-}
+/* storyboard: ogni inquadratura parte da un fotogramma da approvare (costa ~0,03 $ contro 0,5–2 $ di un video) */
+function needsKeyframe(p) { return MODELS[p.engine].needs.image !== 'no'; }
 
 /* =================== REGISTA: interfaccia =================== */
 function renderRegia() {
@@ -332,6 +409,7 @@ function renderRegia() {
     <div class="rg-opts rg-opts2">
       <label>Dialoghi<select id="rgDialog">${[['no', 'Nessuno (solo immagini)'], ['pochi', 'Pochi e brevi'], ['copione', 'Come nel copione']].map(([v, t]) => `<option value="${v}" ${p.dialog === v ? 'selected' : ''}>${t}</option>`).join('')}</select></label>
     </div>
+    <label class="rg-budget">Budget massimo del film ($) <input id="rgBudget" type="number" min="0" step="1" inputmode="decimal" placeholder="nessun limite" value="${p.budget || ''}"></label>
     <label class="check"><input type="checkbox" id="rgLip" ${p.lipsync !== false ? 'checked' : ''}> Labbra sincronizzate quando un personaggio parla in camera (InfiniteTalk)</label>
     <label class="check"><input type="checkbox" id="rgAudio" ${p.audio ? 'checked' : ''}> Suoni d'ambiente nei ciak (la musica la metti tu al montaggio)</label>
     <button class="btn primary big" id="rgWrite">${hasB ? '↻ Riscrivi tutto da capo' : '🎬 Scrivi la storia'} <small>≈ 0,05 $</small></button>
@@ -353,7 +431,8 @@ function rgStoryHtml(p) {
   const B = p.bible, ver = ratingVerdict(B.rating, p.engine);
   const done = p.parts.reduce((n, pt) => n + pt.shots.filter(s => shotState(s).st === 'ok').length, 0);
   const tot = p.parts.reduce((n, pt) => n + pt.shots.length, 0);
-  const cost = p.parts.reduce((n, pt) => n + pt.shots.reduce((k, s) => k + shotCost(p, s), 0), 0);
+  const cost = p.parts.reduce((n, pt) => n + pt.shots.reduce((k, s) => k + (shotState(s, p).clip ? 0 : shotCost(p, s)), 0), 0);
+  const over = p.budget && (p.spent || 0) + cost > p.budget;
   const left = `
   <div class="rg-card">
     <div class="rg-step"><b>2</b><span>La storia</span></div>
@@ -372,7 +451,7 @@ function rgStoryHtml(p) {
         <div class="rg-ci"><b>${esc(c.name)}</b><small>${esc(c.role || '')}</small>
           <select data-cast="${i}"><option value="">${cast ? '— scollega —' : 'Scegli dal Cast…'}</option>${S.chars.map(x => `<option value="${x.id}" ${c.castId === x.id ? 'selected' : ''}>${esc(x.name)}</option>`).join('')}</select>
           ${p.dialog !== 'no' ? `<select data-voice="${i}" aria-label="Voce">${voiceOptions(c.voiceId)}</select>` : ''}
-          <div class="rg-cb">${cast ? `<button class="btn small" data-rpe="${cast.id}">✏️ Ritocca</button>` : `<button class="btn small" data-aic="${i}">🎨 Crea con AI</button>`}${p.dialog !== 'no' ? `<button class="btn small" data-vtest="${i}">🔊 Prova voce</button>` : ''}</div>
+          <div class="rg-cb">${cast ? `<button class="btn small" data-rpe="${cast.id}">📷 Scheda</button>` : `<button class="btn small" data-aic="${i}">🎨 Crea con AI</button>`}${p.dialog !== 'no' ? `<button class="btn small" data-vtest="${i}">🔊 Prova voce</button>` : ''}</div>
         </div></div>`;
     }).join('')}</div>
     <p class="muted small">Le foto del Cast tengono uguali volti e vestiti in tutte le scene. Senza foto il modello inventa il volto a ogni ciak.</p>
@@ -383,29 +462,37 @@ function rgStoryHtml(p) {
     ${p.parts.map((pt, pi) => rgPartHtml(p, pt, pi)).join('')}
   </div>
   <div class="rg-bar">
-    <span><b>${done}/${tot}</b> ciak girati · stima totale ${money(cost)}</span>
+    <span><b>${done}/${tot}</b> ciak girati · speso <b>${money(p.spent || 0)}</b> · per finire ≈ ${money(cost)}${p.budget ? ` · budget <b class="${over ? 'over' : ''}">${money(p.budget)}</b>` : ''}</span>
     <button class="btn primary" id="rgToMont" ${done ? '' : 'disabled'}>✂️ Manda al montaggio</button>
   </div>`;
   return { left, right };
 }
 function rgPartHtml(p, pt, pi) {
-  const sts = pt.shots.map(shotState);
+  const sts = pt.shots.map(s => shotState(s, p));
   const ok = sts.filter(s => s.st === 'ok').length, run = sts.some(s => s.st === 'run' || s.st === 'kf');
-  const todo = pt.shots.filter((s, i) => sts[i].st === 'todo' || sts[i].st === 'err');
-  const cost = todo.reduce((k, s) => k + shotCost(p, s), 0);
+  const prep = pt.shots.filter((s, i) => !sts[i].clip && ['todo', 'err'].includes(sts[i].st) && (!kfValid(p, s) || !voiceValid(p, s)));
+  const toAppr = pt.shots.filter((s, i) => sts[i].st === 'frame');
+  const toFilm = pt.shots.filter((s, i) => sts[i].st === 'appr' || (sts[i].st === 'err' && s.ok && kfValid(p, s)));
+  const prepCost = prep.reduce((k, s) => { const c = costParts(p, s); return k + c.frame + c.voice; }, 0);
+  const filmCost = toFilm.reduce((k, s) => { const c = costParts(p, s); return k + c.video + c.voice; }, 0);
   return `<div class="rg-part">
     <div class="rg-ph"><b>Parte ${pi + 1}</b><span>${mmss(pt.start)}–${mmss(pt.end)}</span><em>${esc(pt.title || '')}</em><small>${ok}/${pt.shots.length}</small></div>
     <label class="nolabel"><textarea data-psum="${pi}" rows="3">${esc(pt.summary || '')}</textarea></label>
     <div class="rg-shots">${pt.shots.map((sh, si) => {
       const s = sts[si], L = lintShot(sh, p.engine);
+      sh.kf = sh.kf || null;
       const th = s.clip ? `<video src="${clipSrc(s.clip)}#t=0.5" muted playsinline preload="metadata"></video>` : sh.kf && sh.kf.img ? `<img src="${sh.kf.img}" alt="">` : `<span class="n">${pi + 1}.${si + 1}</span>`;
       return `<button class="rg-shot st-${s.st}" data-shot="${pi}:${si}">
-        <div class="th">${th}<i class="badge">${s.st === 'kf' ? '🖼' : s.st === 'run' ? '🎬' : s.st === 'ok' ? '✓' : s.st === 'err' ? '!' : ''}</i></div>
-        <div class="sl"><b>${pi + 1}.${si + 1} · ${nearestDur(p.engine, sh.dur)}s</b><small>${esc(sh.action || '')}</small>${(sh.lines || []).length ? `<i class="ln">💬 ${esc(sh.lines[0].char)}: «${esc(sh.lines[0].text)}»</i>` : ''}<em class="rs ${L.score >= 80 ? 'g' : L.score >= 60 ? 'y' : 'r'}">realismo ${L.score}</em></div>
+        <div class="th">${th}<i class="badge">${s.st === 'kf' ? '⏳' : s.st === 'run' ? '🎬' : s.st === 'ok' ? '✓' : s.st === 'err' ? '!' : s.st === 'appr' ? '👍' : s.st === 'frame' ? '?' : ''}</i></div>
+        <div class="sl"><b>${pi + 1}.${si + 1} · ${nearestDur(p.engine, sh.dur)}s</b><span class="stl">${s.st === 'kf' ? esc(s.label) + '…' : s.label}</span><small>${esc(sh.action || '')}</small>${(sh.lines || []).length ? `<i class="ln">💬 ${esc(sh.lines[0].char)}: «${esc(sh.lines[0].text)}»</i>` : ''}<em class="rs ${L.score >= 80 ? 'g' : L.score >= 60 ? 'y' : 'r'}">realismo ${L.score}</em></div>
       </button>`;
     }).join('')}</div>
     <div class="actions">
-      <button class="btn primary small" data-gopart="${pi}" ${!todo.length || run ? 'disabled' : ''}>${run ? '🎬 Si gira…' : todo.length ? `🎬 Gira la parte · ${todo.length} ciak ≈ ${money(cost)}` : '✓ Parte girata'}</button>
+      ${run ? '<button class="btn small" disabled>⏳ Al lavoro…</button>' : ''}
+      ${!run && prep.length ? `<button class="btn primary small" data-prep="${pi}">🖼 1 · Storyboard: ${prep.length} fotogrammi ≈ ${money(prepCost)}</button>` : ''}
+      ${!run && toAppr.length ? `<button class="btn small" data-apprall="${pi}">✓ 2 · Approva tutti (${toAppr.length})</button>` : ''}
+      ${!run && toFilm.length ? `<button class="btn primary small" data-film="${pi}">🎬 3 · Gira ${toFilm.length} approvati ≈ ${money(filmCost)}</button>` : ''}
+      ${!run && !prep.length && !toAppr.length && !toFilm.length && ok === pt.shots.length ? '<button class="btn small" disabled>✓ Parte girata</button>' : ''}
       <button class="btn small" data-rewrite="${pi}" ${run ? 'disabled' : ''}>✍️ Riscrivi inquadrature</button>
     </div>
   </div>`;
@@ -413,10 +500,10 @@ function rgPartHtml(p, pt, pi) {
 function rgWireIdea(p) {
   const upd = () => {
     p.idea = $('#rgIdea').value; p.length = +$('#rgLen').value; p.genre = $('#rgGenre').value; p.ratio = $('#rgRatio').value;
-    p.engine = $('#rgEngine').value; p.audio = $('#rgAudio').checked; p.dialog = $('#rgDialog').value; p.lipsync = $('#rgLip').checked;
+    p.engine = $('#rgEngine').value; p.audio = $('#rgAudio').checked; p.dialog = $('#rgDialog').value; p.lipsync = $('#rgLip').checked; p.budget = +$('#rgBudget').value || 0;
     if (rgList().some(x => x.id === p.id)) rgSave(p);
   };
-  ['#rgIdea', '#rgLen', '#rgGenre', '#rgRatio', '#rgAudio', '#rgDialog', '#rgLip'].forEach(s => $(s).addEventListener('change', upd));
+  ['#rgIdea', '#rgLen', '#rgGenre', '#rgRatio', '#rgAudio', '#rgDialog', '#rgLip', '#rgBudget'].forEach(s => $(s).addEventListener('change', upd));
   $('#rgPdf').onchange = async e => { const f = e.target.files[0]; e.target.value = ''; if (f) { upd(); await rgLoadPdf(p, f); } };
   const pd = $('#rgPdfDel'); if (pd) pd.onclick = () => { p.script = null; if (p.dialog === 'copione') p.dialog = 'pochi'; if (rgList().some(x => x.id === p.id)) rgSave(p); renderRegia(); };
   $('#rgIdea').addEventListener('input', upd);
@@ -432,13 +519,19 @@ function rgWireStory(p) {
   $('#rgTitle').onchange = () => { B.title = $('#rgTitle').value; rgSave(p); renderRegiaList(); };
   $('#rgStory').onchange = () => { B.story = $('#rgStory').value; rgSave(p); };
   $$('[data-psum]').forEach(t => t.onchange = () => { p.parts[+t.dataset.psum].summary = t.value; rgSave(p); });
-  $$('[data-cast]').forEach(s => s.onchange = () => { B.characters[+s.dataset.cast].castId = s.value || null; rgSave(p); renderRegia(); });
-  $$('[data-rpe]').forEach(b => b.onclick = () => openPhotoEdit(b.dataset.rpe));
+  $$('[data-cast]').forEach(s => s.onchange = () => {
+    const ch = B.characters[+s.dataset.cast], cast = S.chars.find(x => x.id === s.value);
+    ch.castId = s.value || null; if (cast && cast.voiceId) ch.voiceId = cast.voiceId;
+    rgSave(p); renderRegia();
+  });
+  $$('[data-rpe]').forEach(b => b.onclick = () => openCharSheet(b.dataset.rpe));
   $$('[data-voice]').forEach(s => s.onchange = () => { B.characters[+s.dataset.voice].voiceId = s.value; rgSave(p); });
   $$('[data-vtest]').forEach(b => b.onclick = () => rgVoiceTest(p, +b.dataset.vtest, b));
-  $$('[data-aic]').forEach(b => b.onclick = () => rgAiChar(p, +b.dataset.aic, b));
+  $$('[data-aic]').forEach(b => b.onclick = () => rgAiChar(p, +b.dataset.aic));
   $$('[data-shot]').forEach(b => b.onclick = () => { const [pi, si] = b.dataset.shot.split(':').map(Number); openShot(p, pi, si); });
-  $$('[data-gopart]').forEach(b => b.onclick = () => rgShootPart(p, +b.dataset.gopart));
+  $$('[data-prep]').forEach(b => b.onclick = () => rgPreparePart(p.id, +b.dataset.prep));
+  $$('[data-apprall]').forEach(b => b.onclick = () => { rgMut(p.id, x => x.parts[+b.dataset.apprall].shots.forEach(s => { if (kfValid(x, s)) s.ok = true; })); renderRegia(); });
+  $$('[data-film]').forEach(b => b.onclick = () => rgFilmPart(p.id, +b.dataset.film));
   $$('[data-rewrite]').forEach(b => b.onclick = () => rgRewritePart(p, +b.dataset.rewrite));
   const s = $('#rgSoften'); if (s) s.onclick = () => rgSoften(p);
   $('#rgToMont').onclick = () => rgToMontage(p);
@@ -450,7 +543,7 @@ let rgRefT = 0;
 function regiaRefresh() { clearTimeout(rgRefT); rgRefT = setTimeout(() => { if ($('#view-regista').classList.contains('active') && !document.querySelector('#rgBody :focus')) renderRegia(); }, 400); }
 
 /* =================== REGISTA: scrittura con l'AI =================== */
-function castBrief() { return S.chars.length ? S.chars.map(c => `- ${c.name}: ${c.desc || 'photo available'}`).join('\n') : '(empty: invent the characters)'; }
+function castBrief() { return S.chars.length ? S.chars.map(c => `- ${c.name}: ${c.look_en || c.desc || 'photo available'}`).join('\n') : '(empty: invent the characters)'; }
 async function rgWrite(p) {
   if (!key()) { toast('Collega prima RunPod'); return openSettings(); }
   if (p.idea.trim().length < 15 && !p.script) { toast('Racconta l\'idea con qualche parola in più, oppure carica il copione in PDF'); return $('#rgIdea').focus(); }
@@ -463,7 +556,7 @@ async function rgWrite(p) {
     { t: 'Trama in parti', d: `divido ${p.length} secondi in parti di 12–25 secondi`, st: '' },
     { t: 'Controllo dei contenuti', d: 'verifico cosa accetta il modello scelto', st: '' }
   ];
-  RG.thinking = { pid: p.id, steps }; renderRegia();
+  RG.thinking = { pid: p.id, steps }; RG.spendTo = p.id; renderRegia();
   const th = $('#rgThink'); if (th) th.scrollIntoView({ behavior: 'smooth', block: 'center' });
   const btn = $('#rgWrite'); btn.disabled = true;
   try {
@@ -487,14 +580,14 @@ JSON schema:
 {"title":"","logline":"","story":"5-8 sentences","themes":"emotions and themes in Italian","look":{"style_en":"","palette_en":"","lighting_en":"","camera_en":""},"characters":[{"name":"","cast":"exact cast name or empty","role":"","gender":"m|f","age":30,"voice":"Italian, 3-6 words describing the voice","look_en":""}],"locations":[{"name":"","look_en":""}],"parts":[{"title":"","start":0,"end":15,"summary":"3-5 Italian sentences: what we SEE"}],"rating":{"level":"tutti|maturo|violento|esplicito","notes":"Italian, one sentence"}}`;
     const B = await llmJSON(sys, usr, 3500, s => { steps[0].d = s === 'IN_QUEUE' ? 'RunPod accende il modello di testo…' : 'tema, tono ed emozioni della storia'; rgThinkRender(); });
     steps.forEach(s => s.st = 'done'); steps[0].d = B.themes || steps[0].d; rgThinkRender();
-    (B.characters || []).forEach((c, k) => { const m = S.chars.find(x => x.name.toLowerCase() === String(c.cast || c.name).toLowerCase()); c.castId = m ? m.id : null; c.voiceId = autoVoice(c, k); });
+    (B.characters || []).forEach((c, k) => { const m = S.chars.find(x => x.name.toLowerCase() === String(c.cast || c.name).toLowerCase()); c.castId = m ? m.id : null; c.voiceId = (m && m.voiceId) || autoVoice(c, k); if (m && m.look_en) c.look_en = m.look_en; });
     let parts = (B.parts || []).map(x => ({ id: uid(), title: x.title, start: +x.start || 0, end: +x.end || 0, summary: x.summary, shots: [] }));
     if (!parts.length) throw new Error('nessuna parte nella trama');
     p.bible = B; p.parts = parts; rgSave(p);
     await rgShotsAll(p, steps);
     toast('Storia pronta: controlla personaggi e inquadrature, poi gira parte per parte');
   } catch (e) { toast('Il regista non è riuscito: ' + e.message, 7000); }
-  RG.thinking = null; renderRegia();
+  RG.thinking = null; RG.spendTo = null; renderRegia();
 }
 async function rgShotsAll(p, steps) {
   const idx = p.parts.map((_, i) => i);
@@ -573,87 +666,158 @@ async function rgSoften(p) {
   } catch (e) { toast('Non riuscito: ' + e.message, 6000); }
   renderRegia();
 }
-async function rgAiChar(p, i, btn) {
-  const c = p.bible.characters[i];
-  btn.disabled = true; btn.textContent = '🎨 Disegno…';
-  try {
-    const img = await aiPortrait(c.name, c.look_en || c.name);
-    const ch = { id: uid(), name: c.name, desc: (c.role ? c.role + '. ' : '') + (c.look_en || ''), img, created: Date.now(), ai: true };
-    await dbPut('chars', ch); S.chars.push(ch); renderChars(); renderRefChars();
-    c.castId = ch.id; rgSave(p); toast(`${c.name} è nel Cast ✓ Puoi ritoccarlo con ✏️`);
-  } catch (e) { toast('Foto non riuscita: ' + e.message, 6000); }
-  renderRegia();
+function rgAiChar(p, i) {
+  const c = p.bible.characters[i], B = p.bible;
+  openCharAI({ name: c.name, idea: [c.role, c.voice ? 'voce ' + c.voice : '', c.look_en].filter(Boolean).join('. '), context: `${B.title || ''}: ${B.story || ''}`,
+    onSaved: ch => { rgMut(p.id, x => { const cc = x.bible.characters[i]; cc.castId = ch.id; if (ch.voiceId) cc.voiceId = ch.voiceId; if (ch.look_en) cc.look_en = ch.look_en; }); renderRegia(); } });
 }
 
 /* =================== REGISTA: si gira =================== */
-async function rgShootPart(p, pi) {
+/* ---- controllo gratuito dei servizi prima di spendere ---- */
+RG.health = {};
+async function rgPreflight(eps) {
+  const bad = [];
+  for (const ep of [...new Set(eps.filter(Boolean))]) {
+    const h = RG.health[ep]; if (h && Date.now() - h < 10 * 60e3) continue;
+    const own = ep === montId() || ep === voceId();
+    try { await rp(`/${ep}/health`); RG.health[ep] = Date.now(); }
+    catch (e) {
+      if (/Chiave/.test(e.message)) throw e;
+      if (own && /404|not found/i.test(e.message)) bad.push(ep === montId() ? 'worker di montaggio (ID sbagliato?)' : 'worker voce clonata (ID sbagliato?)');
+      // per gli endpoint pubblici un errore di /health non blocca: non tutti lo espongono
+    }
+  }
+  if (bad.length) throw new Error('servizio non raggiungibile: ' + bad.join(', ') + '. Controlla in ⚙︎ Impostazioni');
+}
+function rgBudgetOk(p, cost, what) {
+  if (!p.budget || (p.spent || 0) + cost <= p.budget) return true;
+  return confirm(`${what} costa circa ${money(cost)}: con ${money(p.spent || 0)} già spesi supereresti il budget di ${money(p.budget)}. Procedo lo stesso?`);
+}
+/* lancia i lavori: il primo da solo (prova), poi gli altri 3 alla volta solo se la prova è andata */
+async function pilotRun(items, fn) {
+  if (!items.length) return { ok: 0, err: null };
+  let ok = 0;
+  try { await fn(items[0]); ok++; } catch (e) { return { ok, err: e }; }
+  const q = items.slice(1);
+  const w = async () => { while (q.length) { const it = q.shift(); try { await fn(it); ok++; } catch (e) { } } };
+  await Promise.all([w(), w(), w()]);
+  return { ok, err: null };
+}
+function imgEndpointsFor(p, shots) { return shots.map(s => (s.chars || []).some(n => charOfName(p, n).cast) ? 'seedream-v4-edit' : 'qwen-image-t2i'); }
+function voiceEndpointsFor(p, shots) {
+  return shots.flatMap(s => (s.lines || []).slice(0, 1)).map(l => { const v = voiceOfChar(p, l.char); return v.startsWith('clone:') ? voceId() : 'minimax-speech-02-hd'; });
+}
+
+/* ---- 1 · storyboard: voce + fotogramma, nessun video ---- */
+async function rgPreparePart(pid, pi) {
   if (!key()) { toast('Collega prima RunPod'); return openSettings(); }
+  let p = rgList().find(x => x.id === pid); if (!p) return;
   const ver = ratingVerdict(p.bible.rating, p.engine);
-  if (!ver.ok && !confirm(`Attenzione: ${ver.txt}\nGirare comunque? Le scene rifiutate da RunPod non costano.`)) return;
-  const pt = p.parts[pi];
-  const todo = pt.shots.filter(s => ['todo', 'err'].includes(shotState(s).st));
-  const cost = todo.reduce((k, s) => k + shotCost(p, s), 0);
-  if (cost >= 3 && !confirm(`Gira la parte ${pi + 1}: ${todo.length} ciak, circa ${money(cost)}. Procedo?`)) return;
-  if (needsKeyframe(p, todo[0] || {}) && !r2On()) toast('Consiglio: attiva l\'archivio R2, i fotogrammi con i volti funzionano meglio con i link', 5000);
-  todo.forEach(s => { delete s.err; }); rgSave(p);
-  let n = 0;
-  const queue = [...todo];
-  const worker = async () => { while (queue.length) { const s = queue.shift(); try { await rgShoot(p, s); n++; } catch (e) { s.err = e.message; rgSave(p); } regiaRefresh(); } };
-  await Promise.all([worker(), worker(), worker()]);
-  toast(`Parte ${pi + 1}: ${n} ciak in ripresa. Li trovi qui e in Galleria quando sono pronti`);
+  if (!ver.ok && !confirm(`Attenzione: ${ver.txt}\nPreparo comunque i fotogrammi?`)) return;
+  const shots = p.parts[pi].shots.filter(s => { const st = shotState(s, p); return !st.clip && ['todo', 'err'].includes(st.st) && (!kfValid(p, s) || !voiceValid(p, s)); });
+  const cost = shots.reduce((k, s) => { const c = costParts(p, s); return k + c.frame + c.voice; }, 0);
+  if (!rgBudgetOk(p, cost, 'Lo storyboard')) return;
+  if (!r2On()) toast('Consiglio: con l\'archivio R2 attivo i fotogrammi non scadono e i volti del Cast funzionano meglio', 5000);
+  try { await rgPreflight([...imgEndpointsFor(p, shots), ...voiceEndpointsFor(p, shots), r2On() ? montId() : null]); }
+  catch (e) { toast(e.message, 7000); return; }
+  shots.forEach(s => rgShotMut(pid, s.id, x => { delete x.err; }));
+  RG.spendTo = pid;
+  const res = await pilotRun(shots.map(s => s.id), id => rgPrepare(pid, id));
+  RG.spendTo = null;
+  if (res.err) toast('Mi fermo alla prima inquadratura, così non spendi per le altre: ' + res.err.message, 8000);
+  else toast(`Storyboard pronto (${res.ok}): guarda i fotogrammi, approva quelli buoni e rifai solo quelli sbagliati`, 7000);
   renderRegia();
 }
-async function rgShoot(p, sh) {
-  const B = p.bible, line = p.dialog !== 'no' ? (sh.lines || [])[0] : null;
-  if (line) {
-    const vid = voiceOfChar(p, line.char);
-    if (!sh.voice || sh.voice.text !== line.text || sh.voice.vid !== vid || sh.voice.emotion !== line.emotion) {
-      RG.busy.set(sh.id, 'Voce'); regiaRefresh();
-      try { sh.voice = await ttsLine(p, line); rgSave(p); } finally { RG.busy.delete(sh.id); }
+async function rgPrepare(pid, shId) {
+  let p = rgList().find(x => x.id === pid), sh = p && rgFind(p, shId); if (!sh) return;
+  const line = p.dialog !== 'no' ? (sh.lines || [])[0] : null;
+  try {
+    if (line && !voiceValid(p, sh)) {
+      RG.busy.set(shId, 'Voce'); regiaRefresh();
+      const v = await ttsLine(p, line);
+      p = rgShotMut(pid, shId, x => { x.voice = v; }); sh = rgFind(p, shId);
     }
-  } else delete sh.voice;
-  const talk = isTalk(p, sh) && sh.voice && sh.voice.dur > 0;
-  const engine = talk ? 'talk' : p.engine, m = MODELS[engine];
-  const people = (sh.chars || []).map(n => charOfName(p, n));
-  const look = B.look ? [B.look.style_en, B.look.palette_en, B.look.lighting_en, B.look.camera_en].filter(Boolean).join(', ') : '';
-  const prompt = realismPrompt(sh) + (look && !sh.prompt.includes(look.slice(0, 20)) ? ' Look: ' + look + '.' : '');
-  let img = null;
-  if (needsKeyframe(p, sh) || talk) {
-    RG.busy.set(sh.id, 'Fotogramma'); regiaRefresh();
-    try {
-      const casts = people.filter(x => x.cast).map(x => x.cast).slice(0, 4);
-      const kfPrompt = `Cinematic film still, the very first frame of this shot: ${sh.prompt} ${look ? 'Look: ' + look + '.' : ''} ${casts.length ? 'Use the exact faces, hairstyles and clothing of the people in the reference images; each person appears only once.' : ''} Photorealistic, natural skin texture, correct anatomy with two arms and two hands per person, nobody else in frame, no text.`;
-      if (casts.length) {
-        const imgs = []; for (const c of casts) imgs.push(await charModelUrl(c));
-        img = await rpJob('seedream-v4-edit', { prompt: kfPrompt, images: imgs, size: kfSize(p.ratio), enable_safety_checker: true });
-      } else {
-        img = await rpJob('qwen-image-t2i', { prompt: kfPrompt, negative_prompt: NEG_BASE, size: kfSize(p.ratio), seed: -1, enable_safety_checker: true });
-      }
-      sh.kf = { url: img, t: Date.now() };
-      try { sh.kf.img = await urlToJpeg(img, 480); } catch (e) { }
-      rgSave(p);
-    } finally { RG.busy.delete(sh.id); }
+    if (!kfValid(p, sh)) {
+      RG.busy.set(shId, 'Fotogramma'); regiaRefresh();
+      const kf = await makeKeyframe(p, sh);
+      rgShotMut(pid, shId, x => { x.kf = kf; x.ok = false; });
+    }
+  } catch (e) { rgShotMut(pid, shId, x => { x.err = e.message; }); throw e; }
+  finally { RG.busy.delete(shId); regiaRefresh(); }
+}
+function lookOf(p) { const B = p.bible || {}; return B.look ? [B.look.style_en, B.look.palette_en, B.look.lighting_en, B.look.camera_en].filter(Boolean).join(', ') : ''; }
+async function makeKeyframe(p, sh) {
+  const look = lookOf(p);
+  const refs = refsForShot(p, sh);
+  const who = refs.map(x => `reference image${x.n.length > 1 ? 's' : ''} ${x.n.join(' and ')} show ${x.c.name}${x.c.look_en ? '' : ''}`).join('; ');
+  const kfPrompt = `Cinematic film still, the very first frame of this shot: ${sh.prompt} ${look ? 'Look: ' + look + '.' : ''} ${refs.length ? `${who}. Use exactly their faces, hairstyles and clothing; each person appears only once and is not mixed with the others.` : ''} Photorealistic, natural skin texture, correct anatomy with two arms and two hands per person, nobody else in frame, no text.`;
+  let url;
+  if (refs.length) {
+    const imgs = [];
+    for (const x of refs) for (const ph of x.ph) imgs.push(r2On() ? await toModelUrl(ph.img, 'cast-' + x.c.id + '-' + ph.id) : ph.img);
+    url = await rpJob('seedream-v4-edit', { prompt: kfPrompt, images: imgs, size: kfSize(p.ratio), enable_safety_checker: true });
+  } else {
+    url = await rpJob('qwen-image-t2i', { prompt: kfPrompt, negative_prompt: NEG_BASE, size: kfSize(p.ratio), seed: -1, enable_safety_checker: true });
   }
-  let dur = nearestDur(p.engine, sh.voice ? Math.max(sh.dur, Math.ceil(sh.voice.dur + 0.8)) : sh.dur);
-  let audioIn = null;
-  if (talk) { dur = Math.ceil(sh.voice.dur); audioIn = sh.voice.key && r2On() ? await libUrl(sh.voice.key) : sh.voice.url; }
-  const o = {
-    engine, prompt: talk ? `${sh.prompt} ${line.char} speaks with natural lip movement, subtle head motion and blinking, small natural hand gestures, the same person throughout.` : prompt,
-    rawPrompt: `🎥 ${B.title || 'Regia'} · ${sh.action || ''}${line ? ' 💬 ' + line.text : ''}`.slice(0, 300),
-    negative: m.neg ? [sh.negative, NEG_BASE].filter(Boolean).join(', ').slice(0, 900) : '',
-    ratio: m.ratios ? (m.ratios.includes(p.ratio) ? p.ratio : m.ratios[0]) : p.ratio,
-    duration: dur, res: talk ? '720p' : (m.defRes || (m.res && m.res[0]) || '720p'),
-    audio: p.audio, ex: {}, startImg: img, charImgs: [], charIds: people.filter(x => x.cast).map(x => x.cast.id),
-    img, audioIn, refVideoId: '', refDuration: 0, klAudio: false
-  };
-  return await launchClip(o, { rgShot: sh.id, rgProj: p.id });
+  const kf = { url, t: Date.now(), sig: kfSig(p, sh) };
+  try { kf.img = await urlToJpeg(url, 480); } catch (e) { }
+  if (r2On() && montId()) { try { kf.key = (await workerCall({ action: 'save_url', url, key: `ciak/fotogramma-${sh.id}-${kf.sig}.jpg`, type: 'image/jpeg' })).key; } catch (e) { } }
+  return kf;
+}
+async function kfUrl(kf) { return Date.now() - kf.t < 6.5 * 864e5 ? kf.url : await libUrl(kf.key); }
+
+/* ---- 3 · video solo dei fotogrammi approvati ---- */
+async function rgFilmPart(pid, pi) {
+  if (!key()) { toast('Collega prima RunPod'); return openSettings(); }
+  const p = rgList().find(x => x.id === pid); if (!p) return;
+  const shots = p.parts[pi].shots.filter(s => { const st = shotState(s, p); return st.st === 'appr' || (st.st === 'err' && s.ok && kfValid(p, s)); });
+  if (!shots.length) return toast('Approva prima i fotogrammi');
+  const cost = shots.reduce((k, s) => { const c = costParts(p, s); return k + c.video + c.voice; }, 0);
+  if (!rgBudgetOk(p, cost, `Girare ${shots.length} ciak`)) return;
+  if (cost >= 3 && !p.budget && !confirm(`Gira ${shots.length} ciak approvati della parte ${pi + 1}: circa ${money(cost)}. Procedo?`)) return;
+  shots.forEach(s => rgShotMut(pid, s.id, x => { delete x.err; }));
+  RG.spendTo = pid;
+  const res = await pilotRun(shots.map(s => s.id), id => rgFilm(pid, id));
+  RG.spendTo = null;
+  if (res.err) toast('Il ciak di prova non è partito, mi fermo così non spendi per gli altri: ' + res.err.message, 9000);
+  else toast(`Parte ${pi + 1}: ${res.ok} ciak in ripresa. Li trovi qui e in Galleria quando sono pronti`, 6000);
+  renderRegia();
+}
+async function rgFilm(pid, shId) {
+  let p = rgList().find(x => x.id === pid), sh = p && rgFind(p, shId); if (!sh) return;
+  try {
+    if (!voiceValid(p, sh)) { await rgPrepare(pid, shId); p = rgList().find(x => x.id === pid); sh = rgFind(p, shId); }
+    if (!kfValid(p, sh) || !sh.ok) throw new Error('fotogramma da approvare');
+    const B = p.bible, line = p.dialog !== 'no' ? (sh.lines || [])[0] : null;
+    const talk = isTalk(p, sh) && sh.voice && sh.voice.dur > 0;
+    const engine = talk ? 'talk' : p.engine, m = MODELS[engine];
+    const img = await kfUrl(sh.kf);
+    const people = (sh.chars || []).map(n => charOfName(p, n));
+    const look = lookOf(p);
+    const prompt = realismPrompt(sh) + (look && !sh.prompt.includes(look.slice(0, 20)) ? ' Look: ' + look + '.' : '');
+    let dur = nearestDur(p.engine, sh.voice ? Math.max(sh.dur, Math.ceil(sh.voice.dur + 0.8)) : sh.dur), audioIn = null;
+    if (talk) { dur = Math.ceil(sh.voice.dur); audioIn = sh.voice.key && r2On() ? await libUrl(sh.voice.key) : sh.voice.url; }
+    const o = {
+      engine, prompt: talk ? `${sh.prompt} ${line.char} speaks with natural lip movement, subtle head motion and blinking, small natural hand gestures, the same person throughout.` : prompt,
+      rawPrompt: `🎥 ${B.title || 'Regia'} · ${sh.action || ''}${line ? ' 💬 ' + line.text : ''}`.slice(0, 300),
+      negative: m.neg ? [sh.negative, NEG_BASE].filter(Boolean).join(', ').slice(0, 900) : '',
+      ratio: m.ratios ? (m.ratios.includes(p.ratio) ? p.ratio : m.ratios[0]) : p.ratio,
+      duration: dur, res: talk ? '720p' : (m.defRes || (m.res && m.res[0]) || '720p'),
+      audio: p.audio, ex: {}, startImg: img, charImgs: [], charIds: people.filter(x => x.cast).map(x => x.cast.id),
+      img, audioIn, refVideoId: '', refDuration: 0, klAudio: false
+    };
+    if (!RG.health[m.endpoint(o)]) await rgPreflight([m.endpoint(o)]);
+    const job = await launchClip(o, { rgShot: sh.id, rgProj: p.id });
+    rgMut(pid, x => { x.spent = (x.spent || 0) + job.est; });
+    return job;
+  } catch (e) { rgShotMut(pid, shId, x => { x.err = e.message; }); throw e; }
 }
 
 /* =================== REGISTA: dettaglio inquadratura =================== */
 function openShot(p, pi, si) {
   const sh = p.parts[pi].shots[si], s = shotState(sh), L = lintShot(sh, p.engine);
   $('#shTitle').textContent = `Inquadratura ${pi + 1}.${si + 1}`;
-  const media = s.clip ? `<video src="${clipSrc(s.clip)}" controls playsinline></video>` : sh.kf && (sh.kf.img || sh.kf.url) ? `<img src="${sh.kf.img || sh.kf.url}" alt="">` : '';
+  const media = s.clip ? `<video src="${clipSrc(s.clip)}" controls playsinline></video>` : sh.kf && (sh.kf.img || sh.kf.url) ? `<img src="${sh.kf.img || sh.kf.url}" alt="">${!kfValid(p, sh) ? '<p class="muted small sh-old">Il prompt è cambiato: questo fotogramma va rifatto.</p>' : ''}` : '<div class="sh-none">Nessun fotogramma: crealo e guardalo prima di pagare il video.</div>';
   $('#shBody').innerHTML = `${media ? `<div class="sh-media">${media}</div>` : ''}
     <p class="sh-act"><b>${esc(sh.action || '')}</b><br><span class="muted small">${esc(sh.framing || '')} · ${nearestDur(p.engine, sh.dur)} s · ${esc((sh.chars || []).join(', ') || 'nessun personaggio')}</span></p>
     <div class="sh-real ${L.score >= 80 ? 'g' : L.score >= 60 ? 'y' : 'r'}"><b>Realismo ${L.score}/100</b>${L.issues.length ? '<ul>' + L.issues.map(x => `<li>${esc(x)}</li>`).join('') + '</ul>' : '<span> movimento semplice e credibile ✓</span>'}</div>
@@ -666,7 +830,9 @@ function openShot(p, pi, si) {
       <label>Movimento<textarea id="shMotion" rows="2">${esc(sh.motion || '')}</textarea></label>
       <label>Cosa evitare<textarea id="shNeg" rows="2">${esc(sh.negative || '')}</textarea></label></details>
     <div class="actions">
-      <button class="btn primary" id="shGo" ${s.st === 'run' || s.st === 'kf' ? 'disabled' : ''}>${s.st === 'ok' ? '↻ Rigira' : '🎬 Gira'} · ≈ ${money(shotCost(p, sh))}</button>
+      ${kfValid(p, sh) && !sh.ok && !s.clip ? '<button class="btn primary" id="shOk">✓ Fotogramma approvato</button>' : ''}
+      ${kfValid(p, sh) && sh.ok ? `<button class="btn primary" id="shGo" ${s.st === 'run' || s.st === 'kf' ? 'disabled' : ''}>${s.clip ? '↻ Rigira solo il video' : '🎬 Gira il video'} · ≈ ${money(costParts(p, sh).video + costParts(p, sh).voice)}</button>` : ''}
+      <button class="btn" id="shKf" ${s.st === 'run' || s.st === 'kf' ? 'disabled' : ''}>${kfValid(p, sh) ? '↻ Rifai fotogramma' : '🖼 Crea fotogramma'} · ≈ ${money(KF_PRICE + costParts(p, sh).voice)}</button>
       <button class="btn" id="shFix">✨ Rendi più realistico</button>
       ${s.clip ? '<button class="btn" id="shGal">Apri in Galleria</button>' : ''}
     </div>`;
@@ -678,10 +844,24 @@ function openShot(p, pi, si) {
   };
   $$('#shBody [data-lt], #shBody [data-le]').forEach(x => x.onchange = save);
   ['#shPrompt', '#shMotion', '#shNeg'].forEach(x => $(x).onchange = save);
-  $('#shGo').onclick = async () => {
-    save(); const b = $('#shGo'); b.disabled = true; b.textContent = 'Invio…';
-    try { delete sh.err; await rgShoot(p, sh); toast('Ciak in ripresa'); closeM($('#mShot')); } catch (e) { sh.err = e.message; rgSave(p); toast(e.message, 6000); b.disabled = false; }
-    renderRegia();
+  const reopen = () => { const np = rgList().find(x => x.id === p.id); if (np) openShot(np, pi, si); renderRegia(); };
+  const ok = $('#shOk'); if (ok) ok.onclick = () => { rgShotMut(p.id, sh.id, x => { x.ok = true; }); reopen(); };
+  const go1 = $('#shGo'); if (go1) go1.onclick = async () => {
+    save(); go1.disabled = true; go1.textContent = 'Invio…';
+    const np = rgList().find(x => x.id === p.id);
+    if (!rgBudgetOk(np, costParts(np, rgFind(np, sh.id)).video, 'Questo ciak')) { go1.disabled = false; return; }
+    rgShotMut(p.id, sh.id, x => { delete x.err; });
+    RG.spendTo = p.id;
+    try { await rgFilm(p.id, sh.id); toast('Ciak in ripresa'); closeM($('#mShot')); } catch (e) { toast(e.message, 7000); }
+    RG.spendTo = null; renderRegia();
+  };
+  $('#shKf').onclick = async () => {
+    save(); const b = $('#shKf'); b.disabled = true; b.textContent = '🖼 Preparo…';
+    rgShotMut(p.id, sh.id, x => { delete x.err; if (x.kf) x.kf.sig = 'rifai'; });
+    RG.spendTo = p.id;
+    try { const np = rgList().find(x => x.id === p.id); await rgPreflight([...imgEndpointsFor(np, [sh]), ...voiceEndpointsFor(np, [sh])]); await rgPrepare(p.id, sh.id); }
+    catch (e) { toast('Fotogramma non riuscito: ' + e.message, 7000); }
+    RG.spendTo = null; reopen();
   };
   $('#shFix').onclick = async () => {
     save(); const b = $('#shFix'); b.disabled = true; b.textContent = '✨ Riscrivo…';
@@ -761,16 +941,21 @@ function voiceOptions(sel) {
   return `<optgroup label="Voci AI (MiniMax)">${VOICES.map(([id, t]) => `<option value="mm:${id}" ${sel === 'mm:' + id ? 'selected' : ''}>🗣 ${t}</option>`).join('')}</optgroup>` +
     (clones.length ? `<optgroup label="Le mie voci clonate">${clones.map(v => `<option value="clone:${v.id}" ${sel === 'clone:' + v.id ? 'selected' : ''}>🎙 ${esc(v.name)}</option>`).join('')}</optgroup>` : '');
 }
-function voiceOfChar(p, name) { const { ch } = charOfName(p, name); return (ch && ch.voiceId) || 'mm:Friendly_Person'; }
+function voiceOfChar(p, name) { const { ch, cast } = charOfName(p, name); return (ch && ch.voiceId) || (cast && cast.voiceId) || 'mm:Friendly_Person'; }
 function audioDur(url) {
   return new Promise(res => { const a = new Audio(); a.preload = 'metadata'; a.onloadedmetadata = () => res(isFinite(a.duration) ? a.duration : 0); a.onerror = () => res(0); a.src = url; setTimeout(() => res(0), 15000); });
 }
 async function ttsLine(p, line) {
-  const vid = voiceOfChar(p, line.char), base = `voce-${safeFile(line.char)}-${safeFile(line.text.slice(0, 24))}`;
+  const vid = voiceOfChar(p, line.char);
+  return await ttsVoice(vid, line.text, line.emotion, `voce-${safeFile(line.char)}-${safeFile(line.text.slice(0, 24))}`, line.char);
+}
+async function ttsVoice(vid, text, emotion, base, who) {
+  const line = { text, emotion: emotion || 'neutral', char: who || '' };
   let url = null, key = null, dur = 0;
   if (vid.startsWith('clone:')) {
     const prof = voiceProfiles().find(v => v.id === vid.slice(6));
-    if (!prof) throw new Error(`la voce clonata di ${line.char} non esiste più: scegline un'altra`);
+    if (!prof) throw new Error(`la voce clonata ${line.char ? 'di ' + line.char + ' ' : ''}non esiste più: scegline un'altra`);
+    if (!voceId()) throw new Error('per le voci registrate serve l\'endpoint "voce clonata" in ⚙︎ Impostazioni');
     const out = await voceCall({ action: 'tts', text: line.text, lang: 'it', ref: await refOf(prof), exaggeration: line.emotion && line.emotion !== 'neutral' ? 0.75 : 0.5, cfg_weight: 0.5 });
     if (!out.audio_b64) throw new Error('la voce clonata non ha restituito audio');
     const blob = await (await fetch('data:audio/mpeg;base64,' + out.audio_b64)).blob();
@@ -786,7 +971,7 @@ async function ttsLine(p, line) {
     }
     url = out && (typeof out === 'string' ? out : (out.audio_url || out.result || out.url || out.audio || (out.output && (out.output.audio_url || out.output.result))));
     if (!url) throw new Error('RunPod non ha restituito la voce');
-    ls('spent', String((parseFloat(ls('spent')) || 0) + line.text.length * VOICE_PRICE)); showSpent();
+    addSpend(line.text.length * VOICE_PRICE);
     if (r2On() && montId()) { try { key = (await workerCall({ action: 'save_url', url, key: `libreria/${new Date().toISOString().slice(0, 10).replace(/-/g, '')}-${uid().slice(0, 6)}-${base}.mp3`, type: 'audio/mpeg' })).key; } catch (e) { } }
   }
   if (!dur) dur = await audioDur(url);
@@ -801,4 +986,21 @@ async function rgVoiceTest(p, i, btn) {
   try { const v = await ttsLine(p, line); new Audio(v.url).play().catch(() => { }); }
   catch (e) { toast('Voce non riuscita: ' + e.message, 6000); }
   btn.disabled = false; btn.textContent = '🔊 Prova voce';
+}
+
+/* sceglie le foto del Cast adatte all'inquadratura: volti nei primi piani, figura intera nei campi larghi (max 4 in tutto) */
+function refsForShot(p, sh) {
+  const casts = [...new Set((sh.chars || []).map(n => charOfName(p, n).cast).filter(Boolean))];
+  if (!casts.length) return [];
+  const txt = ((sh.framing || '') + ' ' + (sh.prompt || '').slice(0, 120)).toLowerCase();
+  const close = /primo piano|primissimo|dettaglio|close/.test(txt);
+  const wide = /campo|figura intera|totale|wide|full shot|long shot|establishing/.test(txt);
+  const order = close ? ['volto', 'profilo', 'altro', 'figura'] : wide ? ['figura', 'volto', 'altro', 'profilo'] : ['volto', 'figura', 'profilo', 'altro'];
+  const per = casts.length === 1 ? 3 : casts.length === 2 ? 2 : 1;
+  let n = 0;
+  return casts.slice(0, 4).map(c => {
+    const ph = [...charPhotos(c)].sort((a, b) => order.indexOf(a.kind) - order.indexOf(b.kind)).slice(0, per);
+    const nums = ph.map(() => ++n);
+    return { c, ph, n: nums };
+  });
 }

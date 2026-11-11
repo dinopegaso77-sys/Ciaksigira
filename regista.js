@@ -79,8 +79,11 @@ function lintShot(sh, engine) {
   if (people > 2) { issues.push('più di 2 persone in scena'); score -= 15; }
   if (people && !/\bhands?\b/i.test(all)) { issues.push('non dice dove sono le mani'); score -= 6; }
   if (/hands? (are |held |pressed )?(together|clasped|joined|intertwined)|clasp(s|ed|ing)? (his|her|their) hands|joined hands/i.test(all)) { issues.push('mani giunte o intrecciate: spesso escono deformate'); score -= 10; }
-  if (people && !/\b(look|looks|looking|gaze|gazes|gazing|eyes on|watch|watches|watching|stares?|staring|glanc)/i.test(all)) { issues.push('non dice dove guardano i personaggi'); score -= 6; }
-  if (people >= 2 && !/\b(left|right|centre|center|foreground|background|beside|next to|behind|in front of)\b/i.test(all)) { issues.push('non dice chi sta a sinistra e chi a destra'); score -= 8; }
+  const gz = (sh.chars || []).filter(n => !(sh.gaze || []).some(g => g.char.toLowerCase() === String(n).toLowerCase() && g.at));
+  const gazeTxt = /\b(look|looks|looking|gaze|gazes|gazing|eyes (on|fixed|toward|towards|down|up|lowered|closed)|eyeline|watch|watches|watching|stares?|staring|glanc|observ|facing|turns? (his|her) head)/i.test(all);
+  if (people && gz.length && !(gazeTxt && people === 1)) { issues.push(`non dice dove guarda${gz.length > 1 ? 'no' : ''}: ${gz.join(', ')}`); score -= 6; }
+  const pl = (sh.chars || []).filter(n => !(sh.place || []).some(g => g.char.toLowerCase() === String(n).toLowerCase() && g.where));
+  if (people >= 2 && pl.length && !/\b(left|right|centre|center|foreground|background)\b/i.test(all)) { issues.push('non dice chi sta a sinistra e chi a destra'); score -= 8; }
   if (/\b(screen|monitor|whiteboard|television|\btv\b|window|glass|mirror)/i.test(all) && !/matte|no reflections?|without reflections?/i.test(all)) { issues.push('schermi o vetri: possibili riflessi'); score -= 6; }
   if (people && !sh.frame) { issues.push('manca la descrizione del primo fotogramma'); score -= 5; }
   if (people && !/(weight|inertia|natural (gait|motion|movement)|grounded|planted)/i.test(p)) score -= 4;
@@ -95,6 +98,7 @@ function lintShot(sh, engine) {
 const REAL_SUFFIX = 'Real-world physics: natural human motion with weight and inertia, feet planted, subtle breathing and blinking, clothing and hair react naturally; consistent anatomy with two arms and two hands per person; the same person throughout the shot.';
 function realismPrompt(sh) {
   let p = (sh.prompt || '').trim();
+  const bl = blockingText(sh); if (bl && !p.includes(bl)) p += (/[.!]$/.test(p) ? ' ' : '. ') + bl;
   if (!/Real-world physics/i.test(p)) p += (/[.!]$/.test(p) ? ' ' : '. ') + REAL_SUFFIX;
   return p;
 }
@@ -125,7 +129,7 @@ function cleanLLM(t) {
 }
 /* 1ª via: endpoint "chat" compatibile OpenAI (applica il formato giusto per Qwen3) */
 async function llmChat(system, user, maxTokens) {
-  const r = await rp(`/${LLM_EP}/openai/v1/chat/completions`, { method: 'POST', body: JSON.stringify({
+  const r = await rp(`/${LLM_EP}/openai/v1/chat/completions`, { method: 'POST', retry: 1, body: JSON.stringify({
     model: 'Qwen/Qwen3-32B-AWQ', max_tokens: maxTokens, temperature: 0.6, top_p: 0.9,
     messages: [{ role: 'system', content: system }, { role: 'user', content: user + '\n/no_think' }],
     chat_template_kwargs: { enable_thinking: false }
@@ -139,7 +143,7 @@ async function llmChat(system, user, maxTokens) {
 /* 2ª via: endpoint nativo con il formato di Qwen3 scritto a mano */
 async function llmNative(system, user, maxTokens, onWait) {
   const prompt = `<|im_start|>system\n${system}<|im_end|>\n<|im_start|>user\n${user}\n/no_think<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n`;
-  const r = await rp(`/${LLM_EP}/run`, { method: 'POST', body: JSON.stringify({ input: { prompt, max_tokens: maxTokens, temperature: 0.6, top_p: 0.9, stop: '<|im_end|>' } }) });
+  const r = await rp(`/${LLM_EP}/run`, { method: 'POST', retry: 2, body: JSON.stringify({ input: { prompt, max_tokens: maxTokens, temperature: 0.6, top_p: 0.9, stop: '<|im_end|>' } }) });
   let out = r.status === 'COMPLETED' ? r.output : null;
   for (let n = 0; out == null && r.id && n < 160; n++) {
     await wait(2500);
@@ -215,7 +219,7 @@ async function toEnglish(txt) {
 
 /* =================== immagini (RunPod) =================== */
 async function rpJob(endpoint, input, maxWait = 300) {
-  const r = await rp(`/${endpoint}/run`, { method: 'POST', body: JSON.stringify({ input }) });
+  const r = await rp(`/${endpoint}/run`, { method: 'POST', retry: 1, body: JSON.stringify({ input }) });
   let out = r.status === 'COMPLETED' ? r.output : null;
   for (let n = 0; out == null && r.id && n < maxWait / 2.5; n++) {
     await wait(2500);
@@ -368,7 +372,7 @@ function shotState(sh, p) {
 function kfSig(p, sh) {
   const B = p.bible || {}, look = B.look ? JSON.stringify(B.look) : '';
   const casts = (sh.chars || []).map(n => { const c = charOfName(p, n).cast; return c ? c.id + ':' + charPhotos(c).map(x => x.kind + x.img.length + x.img.slice(-12)).join(',') : n; }).join('|');
-  return hashStr([sh.prompt, sh.frame || '', look, p.ratio, casts, isTalk(p, sh) ? 'talk' : ''].join('#'));
+  return hashStr([sh.prompt, sh.frame || '', JSON.stringify(sh.gaze || []), JSON.stringify(sh.place || []), look, p.ratio, casts, isTalk(p, sh) ? 'talk' : ''].join('#'));
 }
 const kfFresh = kf => !!kf && (Date.now() - kf.t < 6.5 * 864e5 || !!kf.key);
 function kfValid(p, sh) { return !!(sh.kf && sh.kf.sig === kfSig(p, sh) && kfFresh(sh.kf)); }
@@ -667,8 +671,9 @@ Each prompt must be self-contained: repeat the full look_en of every visible cha
 For "motion" describe the physics of the movement: speed, weight shifts, contact points, what moves secondarily (cloth, hair, dust, light).
 LANGUAGE: "prompt", "frame", "motion", "camera" and "negative" MUST be written in ENGLISH even though the story is Italian; only "action", "framing" and "lines" are in Italian.
 DIALOGUE: when a character speaks, put the spoken words in "lines" (Italian, natural spoken language, max 14 words per line, ONE speaker per shot). A speaking shot is a medium close-up or close-up of the speaker, facing the camera at three-quarters, mouth clearly visible, small natural gestures; set "oncam": true. Lines spoken off-screen or over other images use "oncam": false.
+GAZE AND BLOCKING: for EVERY character in "chars" fill "gaze" (whom or what they look at, e.g. "at Luca", "down at the VHS tape in his hands") and "place" (where they are in the frame). Never leave anyone out.
 FIRST FRAME: "frame" is an English description of the very first frame as a STILL PHOTO (no motion verbs): framing and camera angle, where each person is in the frame, body pose, where each hand is, where each person looks, expression, key props, light. The video model will animate from that photo, so "prompt" focuses on the movement that starts from it.
-Reply ONLY with JSON: {"shots":[{"dur":5,"chars":["exact character names in frame"],"location":"name","framing":"Italian, e.g. piano medio","camera":"English camera move","action":"ONE Italian sentence","frame":"English still description of the first frame","motion":"English physics of the movement","prompt":"English, model-specific","negative":"English, scene-specific things to avoid","lines":[{"char":"name","text":"Italian line","emotion":"neutral|happy|sad|angry|fearful|surprised","oncam":true}]}]}`;
+Reply ONLY with JSON: {"shots":[{"dur":5,"chars":["exact character names in frame"],"location":"name","framing":"Italian, e.g. piano medio","camera":"English camera move","action":"ONE Italian sentence","frame":"English still description of the first frame","motion":"English physics of the movement","prompt":"English, model-specific","negative":"English, scene-specific things to avoid","gaze":[{"char":"name","at":"English: whom or what this character looks at"}],"place":[{"char":"name","where":"English: left / right / centre and foreground / background"}],"lines":[{"char":"name","text":"Italian line","emotion":"neutral|happy|sad|angry|fearful|surprised","oncam":true}]}]}`;
 }
 function bibleBrief(p) {
   const B = p.bible;
@@ -684,7 +689,7 @@ ${next ? 'Next part: ' + (next.summary || '').slice(0, 200) : 'This is the endin
 Aspect ratio ${p.ratio}. Make the shot durations add up to about ${len} s.
 DIALOGUE MODE: ${p.dialog === 'no' ? 'no dialogue at all, "lines" always empty' : p.dialog === 'copione' && p.script ? 'use the dialogue of the screenplay for this part (shortened if needed)' : 'only a few short meaningful lines, most shots silent'}.${p.script ? '\nSCREENPLAY EXCERPT for reference:\n' + rgScriptFor(p, i) : ''}${p.bible.rating && p.bible.rating.level !== 'tutti' ? '\nKeep every shot non-explicit and implied (cut away, looks, aftermath), acceptable for mainstream video models.' : ''}${fixNotes ? '\nFIX THESE PROBLEMS from the previous version: ' + fixNotes : ''}`;
   const r = await llmJSON(shotsSystem(p.engine), usr, 3500);
-  let shots = (r.shots || []).map(s => ({ id: uid(), dur: +s.dur || 5, chars: (s.chars || []).filter(Boolean), location: s.location || '', framing: s.framing || '', camera: s.camera || '', action: s.action || '', frame: s.frame || '', motion: s.motion || '', prompt: s.prompt || '', negative: s.negative || '', lines: p.dialog === 'no' ? [] : (s.lines || []).filter(l => l && l.text).slice(0, 2).map(l => ({ char: l.char || (s.chars || [])[0] || '', text: String(l.text).trim(), emotion: l.emotion || 'neutral', oncam: l.oncam !== false })) }));
+  let shots = (r.shots || []).map(s => ({ id: uid(), dur: +s.dur || 5, chars: (s.chars || []).filter(Boolean), location: s.location || '', framing: s.framing || '', camera: s.camera || '', action: s.action || '', frame: s.frame || '', motion: s.motion || '', prompt: s.prompt || '', gaze: normPairs(s.gaze, 'at'), place: normPairs(s.place, 'where'), negative: s.negative || '', lines: p.dialog === 'no' ? [] : (s.lines || []).filter(l => l && l.text).slice(0, 2).map(l => ({ char: l.char || (s.chars || [])[0] || '', text: String(l.text).trim(), emotion: l.emotion || 'neutral', oncam: l.oncam !== false })) }));
   if (!shots.length) throw new Error('nessuna inquadratura');
   // algoritmo di realismo: controlla ogni inquadratura e fa riscrivere quelle a rischio
   const bad = shots.map((s, k) => ({ k, L: lintShot(s, p.engine) })).filter(x => x.L.score < 70);
@@ -695,6 +700,7 @@ DIALOGUE MODE: ${p.dialog === 'no' ? 'no dialogue at all, "lines" always empty' 
     } catch (e) { }
   }
   for (const s of shots) { if (looksItalian(s.prompt)) { try { const en = await llm('You translate AI video prompts from Italian into precise cinematic English. Keep every visual detail. Reply with the translation only.', s.prompt, 1200); if (en && !looksItalian(en)) s.prompt = en.trim(); } catch (e) { } } }
+  try { await fillBlocking(p, shots); } catch (e) { }
   // durata: rispetta i limiti del modello e accorcia le scene complesse
   shots.forEach(s => { const L = lintShot(s, p.engine); s.dur = nearestDur(p.engine, Math.min(s.dur, L.maxDur)); });
   return shots;
@@ -787,19 +793,20 @@ async function rgPreparePart(pid, pi) {
 async function rgPrepare(pid, shId) {
   let p = rgList().find(x => x.id === pid), sh = p && rgFind(p, shId); if (!sh) return;
   const line = p.dialog !== 'no' ? (sh.lines || [])[0] : null;
+  let step = 'Preparazione';
   try {
     if (line && !voiceValid(p, sh)) {
-      RG.busy.set(shId, 'Voce'); regiaRefresh();
+      step = 'Voce'; RG.busy.set(shId, 'Voce'); regiaRefresh();
       const v = await ttsLine(p, line);
       p = rgShotMut(pid, shId, x => { x.voice = v; }); sh = rgFind(p, shId);
     }
-    if (!kfValid(p, sh) && (looksItalian(sh.prompt) || !sh.frame || looksItalian(sh.frame))) { RG.busy.set(shId, 'Preparo la scena'); regiaRefresh(); await ensureFrame(pid, shId); p = rgList().find(x => x.id === pid); sh = rgFind(p, shId); }
+    if (!kfValid(p, sh) && (looksItalian(sh.prompt) || !sh.frame || looksItalian(sh.frame) || missingBlocking(sh).length || blockingItalian(sh))) { step = 'Testo della scena'; RG.busy.set(shId, 'Preparo la scena'); regiaRefresh(); await ensureFrame(pid, shId); p = rgList().find(x => x.id === pid); sh = rgFind(p, shId); }
     if (!kfValid(p, sh)) {
-      RG.busy.set(shId, 'Fotogramma'); regiaRefresh();
+      step = 'Fotogramma'; RG.busy.set(shId, 'Fotogramma'); regiaRefresh();
       const kf = await makeKeyframe(p, sh);
       rgShotMut(pid, shId, x => { x.kf = kf; x.ok = false; });
     }
-  } catch (e) { rgShotMut(pid, shId, x => { x.err = e.message; }); throw e; }
+  } catch (e) { const msg = `${step}: ${e.message}`; rgShotMut(pid, shId, x => { x.err = msg; }); throw new Error(msg); }
   finally { RG.busy.delete(shId); regiaRefresh(); }
 }
 /* i modelli video e immagine capiscono molto meglio l'inglese: se un prompt è in italiano lo traduce (costa < 0,001 $) */
@@ -812,12 +819,15 @@ function looksItalian(s) {
 /* prepara il testo del fotogramma: prompt in inglese e descrizione FERMA del primo istante (costa < 0,001 $) */
 async function ensureFrame(pid, shId) {
   await ensureEnglish(pid, shId);
+  await englishBlocking(pid, shId);
   const p = rgList().find(x => x.id === pid), sh = p && rgFind(p, shId);
-  if (!sh || (sh.frame && !looksItalian(sh.frame))) return;
+  if (!sh) return;
+  if (sh.frame && !looksItalian(sh.frame)) { if (missingBlocking(sh).length) await fillBlockingOne(pid, shId); return; }
   const who = (sh.chars || []).map(n => { const c = charOfName(p, n); return `${n}: ${(c.cast && c.cast.look_en) || (c.ch && c.ch.look_en) || ''}`; }).join('; ');
   const f = await llm('You are a cinematographer. Turn an AI video shot description into a description of its FIRST FRAME as a STILL PHOTO, in English, 50-90 words, with no motion verbs: framing and camera angle, where each person stands in the frame (left/right/centre, foreground/background), body pose, where each hand is (relaxed, natural, never clasped together), where each person is looking, expression, key props, light. Screens and glass are matte without reflections. Reply with the description only.',
     `Shot: ${sh.prompt}\nItalian action: ${sh.action || ''}\nFraming: ${sh.framing || ''}\nCharacters: ${who}`, 600);
   if (f && !looksItalian(f)) rgShotMut(pid, shId, x => { x.frame = f.replace(/^["']|["']$/g, '').trim(); });
+  if (missingBlocking(rgFind(rgList().find(x => x.id === pid), shId) || {}).length) await fillBlockingOne(pid, shId);
 }
 async function ensureEnglish(pid, shId) {
   let p = rgList().find(x => x.id === pid), sh = p && rgFind(p, shId);
@@ -830,7 +840,8 @@ async function makeKeyframe(p, sh) {
   const look = lookOf(p);
   const refs = refsForShot(p, sh);
   const who = refs.map(x => `reference image${x.n.length > 1 ? 's' : ''} ${x.n.join(' and ')} show ${x.c.name}`).join('; ');
-  const still = sh.frame || sh.prompt;
+  const bl = blockingText(sh);
+  const still = (sh.frame || sh.prompt) + (bl && !(sh.frame || '').includes(bl) ? ' ' + bl : '');
   const kfPrompt = `Cinematic film still, ${RATIO_TXT[p.ratio] || RATIO_TXT['16:9']}. ${still} ${look ? 'Look: ' + look + '.' : ''} ${refs.length ? `${who}. Use exactly their faces, hairstyles and clothing; each person appears only once and is not mixed with the others.` : ''} Photorealistic, natural skin texture, correct anatomy with two arms and two hands per person, relaxed natural hands, nobody else in frame, matte screens and glass without reflections, no text.`;
   const neg = NEG_BASE + ', reflection, mirror image, clasped hands, vertical frame';
   const gen = async extra => {
@@ -915,6 +926,10 @@ function openShot(p, pi, si) {
     ${p.dialog !== 'no' ? `<div class="sh-lines"><b>Battute</b>${(sh.lines || []).length ? sh.lines.map((l, k) => `<div class="sh-line"><span>${esc(l.char)}</span><input data-lt="${k}" value="${esc(l.text)}"><select data-le="${k}">${EMOTIONS.map(([v, t]) => `<option value="${v}" ${l.emotion === v ? 'selected' : ''}>${t}</option>`).join('')}</select></div>`).join('') : '<span class="muted small"> nessuna, inquadratura muta</span>'}
       ${sh.voice ? `<audio controls src="${sh.voice.url}"></audio>` : ''}
       ${isTalk(p, sh) ? '<p class="muted small">Parla in camera: InfiniteTalk muoverà le labbra a tempo con la voce.</p>' : ''}</div>` : ''}
+    ${(sh.chars || []).length ? `<div class="sh-block"><b>Sguardi e posizioni</b>${sh.chars.map((n, k) => `<div class="sh-bl"><span>${esc(n)}</span>
+        <input data-gz="${esc(n)}" value="${esc(((sh.gaze || []).find(g => g.char === n) || {}).at || '')}" placeholder="guarda… (es. Luca, la cassetta)">
+        <input data-pl="${esc(n)}" value="${esc(((sh.place || []).find(g => g.char === n) || {}).where || '')}" placeholder="dove sta… (es. a sinistra, davanti)"></div>`).join('')}
+      <small class="muted">Puoi scrivere in italiano: li traduco io prima del fotogramma.</small></div>` : ''}
     <label>Primo fotogramma (foto ferma, inglese)<textarea id="shFrame" rows="5" placeholder="Si scrive da solo quando crei il fotogramma">${esc(sh.frame || '')}</textarea></label>
     <label>Movimento per ${esc(MODELS[p.engine].name)} (inglese)<textarea id="shPrompt" rows="6">${esc(sh.prompt)}</textarea></label>
     <details class="adv"><summary>Fisica del movimento e cosa evitare</summary>
@@ -931,9 +946,12 @@ function openShot(p, pi, si) {
     sh.prompt = $('#shPrompt').value; sh.frame = $('#shFrame').value.trim(); sh.motion = $('#shMotion').value; sh.negative = $('#shNeg').value;
     $$('#shBody [data-lt]').forEach(i => { sh.lines[+i.dataset.lt].text = i.value.trim(); });
     $$('#shBody [data-le]').forEach(s => { sh.lines[+s.dataset.le].emotion = s.value; });
-    sh.lines = (sh.lines || []).filter(l => l.text); rgSave(p);
+    sh.lines = (sh.lines || []).filter(l => l.text);
+    $$('#shBody [data-gz]').forEach(i => setPair(sh, 'gaze', 'at', i.dataset.gz, i.value.trim()));
+    $$('#shBody [data-pl]').forEach(i => setPair(sh, 'place', 'where', i.dataset.pl, i.value.trim()));
+    rgSave(p);
   };
-  $$('#shBody [data-lt], #shBody [data-le]').forEach(x => x.onchange = save);
+  $$('#shBody [data-lt], #shBody [data-le], #shBody [data-gz], #shBody [data-pl]').forEach(x => x.onchange = save);
   ['#shPrompt', '#shFrame', '#shMotion', '#shNeg'].forEach(x => $(x).onchange = save);
   const reopen = () => { const np = rgList().find(x => x.id === p.id); if (np) openShot(np, pi, si); renderRegia(); };
   const ok = $('#shOk'); if (ok) ok.onclick = () => { rgShotMut(p.id, sh.id, x => { x.ok = true; }); reopen(); };
@@ -1053,7 +1071,7 @@ async function ttsVoice(vid, text, emotion, base, who) {
     dur = out.duration || 0;
     if (r2On()) { const up = await uploadToR2(blob, base + '.mp3', 'libreria'); key = up.key; url = up.get; } else url = 'data:audio/mpeg;base64,' + out.audio_b64;
   } else {
-    const r = await rp('/minimax-speech-02-hd/run', { method: 'POST', body: JSON.stringify({ input: { prompt: line.text, voice_id: vid.slice(3), speed: 1, volume: 1, pitch: 0, emotion: line.emotion || 'neutral', english_normalization: false } }) });
+    const r = await rp('/minimax-speech-02-hd/run', { method: 'POST', retry: 2, body: JSON.stringify({ input: { prompt: line.text, voice_id: vid.slice(3), speed: 1, volume: 1, pitch: 0, emotion: line.emotion || 'neutral', english_normalization: false } }) });
     let out = r.status === 'COMPLETED' ? r.output : null;
     for (let n = 0; out == null && r.id && n < 80; n++) {
       await wait(2000);
@@ -1111,4 +1129,51 @@ function rgCharCheck(p, B) {
   const miss = rgSelNames(p).filter(s => !names.includes(s.toLowerCase()) && !chars.some(c => String(c.name).toLowerCase() === s.toLowerCase()));
   if (miss.length) return `these cast members are missing: ${miss.join(', ')}`;
   return '';
+}
+
+/* =================== sguardi e posizioni: dati obbligatori, non consigli =================== */
+function normPairs(a, k) { return (Array.isArray(a) ? a : []).filter(x => x && x.char && x[k]).map(x => ({ char: String(x.char).trim(), [k]: String(x[k]).trim() })); }
+function setPair(sh, field, k, name, val) {
+  sh[field] = (sh[field] || []).filter(x => x.char !== name);
+  if (val) sh[field].push({ char: name, [k]: val });
+}
+function missingBlocking(sh) {
+  return (sh.chars || []).filter(n => {
+    const g = (sh.gaze || []).some(x => x.char.toLowerCase() === String(n).toLowerCase());
+    const pl = (sh.chars || []).length < 2 || (sh.place || []).some(x => x.char.toLowerCase() === String(n).toLowerCase());
+    return !g || !pl;
+  });
+}
+function blockingText(sh) {
+  const g = (sh.gaze || []).map(x => `${x.char} looks ${/^(at|down|up|toward|towards|into|out|away|straight)\b/i.test(x.at) ? '' : 'at '}${x.at.replace(/^looks?\s+/i, '')}`);
+  const pl = (sh.chars || []).length > 1 ? (sh.place || []).map(x => `${x.char} is ${/^(on|in|at)\b/i.test(x.where) ? '' : 'on the '}${x.where}`) : [];
+  const parts = [];
+  if (pl.length) parts.push('Blocking: ' + pl.join('; ') + '.');
+  if (g.length) parts.push('Eyeline: ' + g.join('; ') + '.');
+  return parts.join(' ');
+}
+const IT_WORDS = /\b(guarda|verso|sinistra|destra|davanti|dietro|centro|il|la|lo|gli|le|sua|suo|cassetta|lavagna|basso|alto)\b/i;
+function blockingItalian(sh) { return [...(sh.gaze || []).map(x => x.at), ...(sh.place || []).map(x => x.where)].some(s => IT_WORDS.test(s)); }
+async function englishBlocking(pid, shId) {
+  const p = rgList().find(x => x.id === pid), sh = p && rgFind(p, shId);
+  if (!sh || !blockingItalian(sh)) return;
+  const r = await llmJSON('Translate these short stage directions from Italian into concise English. Keep the same JSON structure. Reply ONLY with JSON.', JSON.stringify({ gaze: sh.gaze || [], place: sh.place || [] }), 500);
+  rgShotMut(pid, shId, x => { if (r.gaze) x.gaze = normPairs(r.gaze, 'at'); if (r.place) x.place = normPairs(r.place, 'where'); });
+}
+const BLOCK_SYS = 'You are a film director. For each shot, decide where each listed character LOOKS and where they STAND in the frame, coherent with the shot description. English, short. Reply ONLY with JSON {"shots":[{"i":0,"gaze":[{"char":"","at":""}],"place":[{"char":"","where":"left/right/centre, foreground/background"}]}]}.';
+async function fillBlocking(p, shots) {
+  const need = shots.map((s, i) => ({ s, i })).filter(x => missingBlocking(x.s).length);
+  if (!need.length) return;
+  const r = await llmJSON(BLOCK_SYS, need.map(x => `SHOT ${x.i}: characters ${x.s.chars.join(', ')}. ${x.s.prompt}`).join('\n'), 900);
+  (r.shots || []).forEach(o => {
+    const s = shots[+o.i]; if (!s) return;
+    normPairs(o.gaze, 'at').forEach(g => { if (!(s.gaze || []).some(x => x.char === g.char)) (s.gaze = s.gaze || []).push(g); });
+    normPairs(o.place, 'where').forEach(g => { if (!(s.place || []).some(x => x.char === g.char)) (s.place = s.place || []).push(g); });
+  });
+}
+async function fillBlockingOne(pid, shId) {
+  const p = rgList().find(x => x.id === pid), sh = p && rgFind(p, shId); if (!sh) return;
+  const tmp = [JSON.parse(JSON.stringify(sh))];
+  await fillBlocking(p, tmp);
+  rgShotMut(pid, shId, x => { x.gaze = tmp[0].gaze || []; x.place = tmp[0].place || []; });
 }

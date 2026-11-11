@@ -207,7 +207,7 @@ async function refOf(p) {
 }
 async function voceCall(input, maxWait = 900) {
   const id = voceId(); if (!id) throw new Error('endpoint voce non collegato');
-  const r = await rp(`/${id}/run`, { method: 'POST', body: JSON.stringify({ input }) });
+  const r = await rp(`/${id}/run`, { method: 'POST', retry: 1, body: JSON.stringify({ input }) });
   let out = r.status === 'COMPLETED' ? r.output : null;
   for (let n = 0; !out && n < maxWait / 3; n++) {
     await new Promise(res => setTimeout(res, 3000));

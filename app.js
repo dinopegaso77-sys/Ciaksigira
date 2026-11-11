@@ -1,6 +1,6 @@
 /* Ciak si gira — generatore di clip video via RunPod Public Endpoints */
 'use strict';
-const APP_VERSION = '2.3.3'; // deve coincidere con ?v= in index.html
+const APP_VERSION = '2.3.4'; // deve coincidere con ?v= in index.html
 
 const API = 'https://api.runpod.ai/v2';
 const $ = s => document.querySelector(s);
@@ -132,8 +132,19 @@ function fileToJpeg(file, max = 1280) {
   });
 }
 
+/* rete del telefono instabile o app in secondo piano: le letture (GET) riprovano sempre fino a 3 volte;
+   gli invii (POST) solo se chi chiama lo permette con opts.retry, perché un invio ripetuto può costare due volte */
+const netErr = e => e instanceof TypeError || /failed to fetch|network|load failed/i.test(e && e.message || '');
 async function rp(path, opts = {}) {
-  const r = await fetch(API + path, { ...opts, headers: { Authorization: 'Bearer ' + key(), 'Content-Type': 'application/json', ...(opts.headers || {}) } });
+  const tries = 1 + (opts.retry != null ? opts.retry : (!opts.method || opts.method === 'GET') ? 3 : 0);
+  let r;
+  for (let k = 0; k < tries; k++) {
+    try { r = await fetch(API + path, { ...opts, headers: { Authorization: 'Bearer ' + key(), 'Content-Type': 'application/json', ...(opts.headers || {}) } }); break; }
+    catch (e) {
+      if (!netErr(e) || k === tries - 1) throw new Error('connessione interrotta (rete instabile o app in secondo piano): riprova');
+      await new Promise(res => setTimeout(res, 2000 * Math.pow(2, k)));
+    }
+  }
   let j = {}; try { j = await r.json(); } catch (e) { }
   if (!r.ok) {
     const ep = (path.split('/')[1] || '').slice(0, 40);

@@ -674,3 +674,9 @@ label.btn{display:inline-flex;align-items:center;gap:6px;margin:0;font-family:"I
 #rgN.need{border-color:#e8c25a;box-shadow:0 0 0 2px rgba(232,194,90,.25)}
 #rgWrite.off{opacity:.55}
 .rg-who{grid-template-columns:220px 1fr}@media (max-width:560px){.rg-who{grid-template-columns:1fr}}
+.sh-block{border:1px solid var(--line2);border-radius:8px;padding:10px 12px;margin:10px 0 0;display:flex;flex-direction:column;gap:8px}
+.sh-block>b{font-family:var(--f-label);letter-spacing:.08em;color:var(--muted)}
+.sh-bl{display:grid;grid-template-columns:110px 1fr 1fr;gap:8px;align-items:center}
+.sh-bl span{font-family:var(--f-chalk);font-weight:700;color:var(--chalk)}
+.sh-bl input{background:#0a0a0a;border:1px solid var(--line2);border-radius:8px;color:var(--text);padding:8px 10px;font-size:16px;width:100%;min-width:0;margin:0}
+@media (max-width:760px){.sh-bl{grid-template-columns:1fr}}

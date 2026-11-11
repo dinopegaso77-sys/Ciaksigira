@@ -865,18 +865,22 @@ function lookOf(p) { const B = p.bible || {}; return B.look ? [B.look.style_en, 
 async function makeKeyframe(p, sh) {
   const look = lookOf(p);
   const refs = refsForShot(p, sh);
+  const prev = refs.length ? prevShotWithKf(p, sh) : null;
   const who = refs.map(x => `reference image${x.n.length > 1 ? 's' : ''} ${x.n.join(' and ')} show ${x.c.name}${x.c.master ? ` (image ${x.n[0]} is the locked MASTER sheet of ${x.c.name}: follow it over any text)` : ''}`).join('; ');
   const lockTxt = refs.map(x => `${x.c.name} must look EXACTLY like ${x.c.master ? 'the master reference' : 'the reference photos'}: same face, same hair colour, length, texture and hairstyle, same age and body${x.c.master && x.c.master.traits_en ? ', ' + x.c.master.traits_en : ''}; ignore any different description of ${x.c.name}'s hair, face or age in the scene text.`).join(' ');
   const chg = storyChangesFor(p, sh);
   const bl = blockingText(sh);
   const still = (sh.frame || sh.prompt) + (bl && !(sh.frame || '').includes(bl) ? ' ' + bl : '');
-  const ident = refs.length ? `IDENTITY FIRST: ${who}. Keep exactly their faces, hairstyles and clothing; each person appears only once and is not mixed with the others. ${lockTxt} ${chg} ` : (chg ? chg + ' ' : '');
+  const nRefs = refs.reduce((k, x) => k + x.ph.length, 0);
+  const cont = prev ? ` The last reference image (${nRefs + 1}) is the PREVIOUS SHOT of the same film: keep the same clothes, hairstyle, location and lighting for continuity, but compose this new shot as described.` : '';
+  const ident = refs.length ? `IDENTITY FIRST: ${who}.${cont} Keep exactly their faces, hairstyles and clothing; each person appears only once and is not mixed with the others. ${lockTxt} ${chg} ` : (chg ? chg + ' ' : '');
   const kfPrompt = `${ident}Cinematic film still, ${RATIO_TXT[p.ratio] || RATIO_TXT['16:9']}. SCENE: ${still} ${look ? 'Look: ' + look + '.' : ''} Photorealistic, natural skin texture, correct anatomy with two arms and two hands per person, relaxed natural hands, nobody else in frame, matte screens and glass without reflections, no text.`;
   const neg = NEG_BASE + ', reflection, mirror image, clasped hands, vertical frame';
   const gen = async extra => {
     if (refs.length) {
       const imgs = [];
       for (const x of refs) for (const ph of x.ph) imgs.push(r2On() ? await toModelUrl(ph.img, 'cast-' + x.c.id + '-' + ph.id) : ph.img);
+      if (prev) { try { imgs.push(await kfUrl(prev.kf)); } catch (e) { } }
       const E = kfEngine(p);
       if (E.ep === 'google-nano-banana-2-edit') return await rpJob(E.ep, { prompt: kfPrompt + extra, images: imgs.slice(0, 6), resolution: '1k', aspect_ratio: p.ratio, output_format: 'jpeg' });
       return await rpJob(E.ep, { prompt: kfPrompt + extra, images: imgs, size: kfSize(p.ratio), enable_safety_checker: true });
@@ -895,7 +899,7 @@ async function makeKeyframe(p, sh) {
   }
   return kf;
 }
-async function kfUrl(kf) { return Date.now() - kf.t < 6.5 * 864e5 ? kf.url : await libUrl(kf.key); }
+async function kfUrl(kf) { if (kf.key && r2On()) { try { return await libUrl(kf.key); } catch (e) { } } return kf.url; }
 
 /* ---- 3 · video solo dei fotogrammi approvati ---- */
 async function rgFilmPart(pid, pi) {
@@ -926,13 +930,14 @@ async function rgFilm(pid, shId) {
     const img = await kfUrl(sh.kf);
     const people = (sh.chars || []).map(n => charOfName(p, n));
     const look = lookOf(p);
-    const prompt = realismPrompt(sh) + (look && !sh.prompt.includes(look.slice(0, 20)) ? ' Look: ' + look + '.' : '');
+    const motion = await cleanMotion(pid, shId);
+    const prompt = `${motion} ${blockingText(sh)} ${KEEP_SAME} ${REAL_SUFFIX}`.replace(/\s+/g, ' ').trim();
     let dur = nearestDur(p.engine, sh.voice ? Math.max(sh.dur, Math.ceil(sh.voice.dur + 0.8)) : sh.dur), audioIn = null;
     if (talk) { dur = Math.ceil(sh.voice.dur); audioIn = sh.voice.key && r2On() ? await libUrl(sh.voice.key) : sh.voice.url; }
     const o = {
-      engine, prompt: talk ? `${sh.prompt} ${line.char} speaks with natural lip movement, subtle head motion and blinking, small natural hand gestures, the same person throughout.` : prompt,
+      engine, prompt: talk ? `${motion} ${line.char} speaks with natural lip movement, subtle head motion and blinking, small natural hand gestures. ${KEEP_SAME}` : prompt,
       rawPrompt: `🎥 ${B.title || 'Regia'} · ${sh.action || ''}${line ? ' 💬 ' + line.text : ''}`.slice(0, 300),
-      negative: m.neg ? [sh.negative, NEG_BASE].filter(Boolean).join(', ').slice(0, 900) : '',
+      negative: m.neg ? [sh.negative, NEG_BASE, 'hairstyle change, hair colour change, outfit change, different person'].filter(Boolean).join(', ').slice(0, 1000) : '',
       ratio: m.ratios ? (m.ratios.includes(p.ratio) ? p.ratio : m.ratios[0]) : p.ratio,
       duration: dur, res: talk ? '720p' : (m.defRes || (m.res && m.res[0]) || '720p'),
       audio: p.audio, ex: {}, startImg: img, charImgs: [], charIds: people.filter(x => x.cast).map(x => x.cast.id),
@@ -971,6 +976,7 @@ function openShot(p, pi, si) {
       ${kfValid(p, sh) && !sh.ok && !s.clip ? '<button class="btn primary" id="shOk">✓ Fotogramma approvato</button>' : ''}
       ${kfValid(p, sh) && sh.ok ? `<button class="btn primary" id="shGo" ${s.st === 'run' || s.st === 'kf' ? 'disabled' : ''}>${s.clip ? '↻ Rigira solo il video' : '🎬 Gira il video'} · ≈ ${money(costParts(p, sh).video + costParts(p, sh).voice)}</button>` : ''}
       <button class="btn" id="shKf" ${s.st === 'run' || s.st === 'kf' ? 'disabled' : ''}>${kfValid(p, sh) ? '↻ Rifai fotogramma' : '🖼 Crea fotogramma'} · ≈ ${money(kfPrice(p, sh) + costParts(p, sh).voice)}</button>
+      ${prevShot(p, sh) && shotState(prevShot(p, sh), p).clip ? '<button class="btn" id="shChain">⛓ Continua dall\'ultimo fotogramma del ciak precedente (gratis)</button>' : ''}
       <button class="btn" id="shFix">✨ Rendi più realistico</button>
       ${s.clip ? '<button class="btn" id="shGal">Apri in Galleria</button>' : ''}
     </div>`;
@@ -995,6 +1001,12 @@ function openShot(p, pi, si) {
     RG.spendTo = p.id;
     try { await rgFilm(p.id, sh.id); toast('Ciak in ripresa'); closeM($('#mShot')); } catch (e) { toast(e.message, 7000); }
     RG.spendTo = null; renderRegia();
+  };
+  const ch = $('#shChain'); if (ch) ch.onclick = async () => {
+    save(); ch.disabled = true; ch.textContent = '⛓ Estraggo l\'ultimo fotogramma…';
+    try { await chainFromPrev(p.id, sh.id); toast('Fotogramma preso dal ciak precedente: controllalo e approvalo'); }
+    catch (e) { toast('Non riuscito: ' + e.message, 7000); }
+    reopen();
   };
   $('#shKf').onclick = async () => {
     save(); const b = $('#shKf'); b.disabled = true; b.textContent = '🖼 Preparo…';
@@ -1179,7 +1191,7 @@ function missingBlocking(sh) {
   });
 }
 function blockingText(sh) {
-  const g = (sh.gaze || []).map(x => `${x.char} looks ${/^(at|down|up|toward|towards|into|out|away|straight)\b/i.test(x.at) ? '' : 'at '}${x.at.replace(/^looks?\s+/i, '')}`);
+  const g = (sh.gaze || []).map(x => { const a = x.at.replace(/^looks?\s+/i, '').replace(/^at\s+(forward|ahead|straight|away|down|up|sideways|off-screen)/i, '$1'); return `${x.char} looks ${/^(at|down|up|toward|towards|into|out|away|straight|forward|ahead|sideways|off-screen|over|past|back)\b/i.test(a) ? '' : 'at '}${a}`; });
   const pl = (sh.chars || []).length > 1 ? (sh.place || []).map(x => `${x.char} is ${/^(on|in|at)\b/i.test(x.where) ? '' : 'on the '}${x.where}`) : [];
   const parts = [];
   if (pl.length) parts.push('Blocking: ' + pl.join('; ') + '.');
@@ -1219,4 +1231,48 @@ function storyChangesFor(p, sh) {
   const pi = p.parts.findIndex(pt => pt.shots.some(s => s.id === sh.id)) + 1;
   return ch.filter(c => c && c.change_en && (sh.chars || []).some(n => String(n).toLowerCase() === String(c.char).toLowerCase()) && pi >= (+c.from_part || 1))
     .map(c => `Story-required appearance change for ${c.char}: ${c.change_en}.`).join(' ');
+}
+
+/* =================== continuità tra un ciak e l'altro =================== */
+const KEEP_SAME = 'Everyone stays exactly as in the first frame: same face, same hairstyle and hair colour, same clothes, same body; no transformation.';
+function shotOrder(p) { return p.parts.flatMap(pt => pt.shots); }
+function prevShot(p, sh) { const all = shotOrder(p), i = all.findIndex(s => s.id === sh.id); return i > 0 ? all[i - 1] : null; }
+/* inquadratura precedente approvata con almeno un personaggio in comune: fa da riferimento per vestiti, luogo e luce */
+function prevShotWithKf(p, sh) {
+  const all = shotOrder(p), i = all.findIndex(s => s.id === sh.id);
+  for (let k = i - 1; k >= 0 && k >= i - 3; k--) {
+    const s = all[k];
+    if (s.kf && s.ok && kfFresh(s.kf) && (s.chars || []).some(n => (sh.chars || []).includes(n))) return s;
+  }
+  return null;
+}
+/* il testo del video descrive solo il movimento: l'aspetto viene dal primo fotogramma (costa < 0,001 $) */
+async function cleanMotion(pid, shId) {
+  const p = rgList().find(x => x.id === pid), sh = p && rgFind(p, shId); if (!sh) return '';
+  const sig = hashStr((sh.prompt || '') + '#' + (sh.motion || '') + '#' + (sh.camera || ''));
+  if (sh.mclean && sh.mclean.sig === sig) return sh.mclean.text;
+  let t = '';
+  try {
+    t = await llm('You edit prompts for IMAGE-TO-VIDEO models. The first frame is already given, so the prompt must describe ONLY what moves: the action, gestures, expression changes, camera movement, light changes, physics. REMOVE every description of people\'s appearance: age, face, hair, skin, body, clothes, accessories. Refer to people only by their name. English, under 80 words. Reply with the prompt only.',
+      `Prompt: ${sh.prompt}\nMotion notes: ${sh.motion || ''}\nCamera: ${sh.camera || ''}`, 500);
+    t = t.replace(/^["']|["']$/g, '').trim();
+  } catch (e) { }
+  if (!t || looksItalian(t)) t = [sh.camera, sh.motion].filter(Boolean).join('. ') || sh.prompt;
+  rgShotMut(pid, shId, x => { x.mclean = { sig, text: t }; });
+  return t;
+}
+/* ⛓ parte dall'ultimo fotogramma del ciak precedente: gratis (worker di montaggio), eredita viso, vestiti e luce */
+async function chainFromPrev(pid, shId) {
+  const p = rgList().find(x => x.id === pid), sh = p && rgFind(p, shId); if (!sh) return;
+  const prev = prevShot(p, sh), clip = prev && shotState(prev, p).clip;
+  if (!clip) throw new Error('il ciak precedente non è ancora girato');
+  if (!montId()) throw new Error('serve il worker di montaggio collegato');
+  const { audio, image, ...src } = await clipSource(clip, { left: MAX_PAYLOAD });
+  const out = await workerCall({ action: 'lastframe', ...src });
+  if (!out || !out.image) throw new Error('fotogramma non ricevuto');
+  const kf = { url: out.image, t: Date.now(), sig: kfSig(p, sh), chained: prev.id };
+  if (r2On()) { try { const up = await uploadToR2(await dataUrlToBlob(out.image), `${stamp()}-fotogramma-continua-${safeFile((sh.chars || []).join('-') || 'scena')}.jpg`, 'immagini'); kf.key = up.key; kf.url = up.get; } catch (e) { } }
+  try { kf.img = await fileToJpeg(await dataUrlToBlob(out.image), 640); } catch (e) { kf.img = out.image; }
+  const d = await imgDims(kf.img); if (d) { kf.w = d.w; kf.h = d.h; }
+  rgShotMut(pid, shId, x => { x.kf = kf; x.ok = false; delete x.err; });
 }

@@ -16,7 +16,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Kalam:wght@400;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=2.0">
+<link rel="stylesheet" href="style.css?v=2.1">
 </head>
 <body>
 
@@ -44,6 +44,7 @@
   <div class="topin">
     <div class="brand"><img class="logo-ic" src="icona.svg" alt="" onerror="this.style.display='none'">CIAK <b>SI GIRA</b></div>
     <nav class="tabs">
+      <button class="tab" data-view="regista">Regista</button>
       <button class="tab active" data-view="crea">Crea</button>
       <button class="tab" data-view="galleria">Galleria</button>
       <button class="tab" data-view="montaggio">Montaggio</button>
@@ -75,7 +76,10 @@
           <div class="field-label">Modello</div>
           <button class="modelbtn" id="modelBtn" type="button"></button>
 
-          <label>Descrizione della scena
+          <div class="plabel"><span>Descrizione della scena</span>
+            <button class="btn small magic" id="magicBtn" type="button">✨ Crea prompt</button>
+            <button class="btn small hidden" id="magicUndo" type="button" title="Torna al testo di prima">↶</button></div>
+          <label class="nolabel">
             <textarea id="prompt" rows="4" placeholder="Es. Primo piano di una donna sotto la pioggia, luci al neon riflesse sull'asfalto, carrellata lenta in avanti, stile cinema 35mm"></textarea>
           </label>
 
@@ -175,6 +179,14 @@
   </section>
 
   <!-- ===== PERSONAGGI ===== -->
+  <section id="view-regista" class="view">
+    <div class="pagehead">
+      <h1 class="chalk">Regista AI</h1>
+      <div class="ph-act"><select id="rgProjects" aria-label="Le tue regie"></select><button class="btn primary small" id="rgNew">+ Nuova</button></div>
+    </div>
+    <div id="rgBody"></div>
+  </section>
+
   <section id="view-personaggi" class="view">
     <div class="pagehead">
       <h1 class="chalk">Personaggi</h1>
@@ -237,6 +249,7 @@
 
 <!-- ===== BARRA IN BASSO (telefono) ===== -->
 <nav class="bottomnav">
+  <button class="tab" data-view="regista"><i>🎥</i>Regista</button>
   <button class="tab active" data-view="crea"><i>🎬</i>Crea</button>
   <button class="tab" data-view="galleria"><i>🎞</i>Galleria</button>
   <button class="tab" data-view="montaggio"><i>✂️</i>Montaggio</button>
@@ -305,7 +318,7 @@
     </details>
 
     <button class="btn big" id="lockNow">🔒 Blocca l'app</button>
-    <p class="muted small ver">Ciak si gira · versione <b id="appVer">2.0</b></p>
+    <p class="muted small ver">Ciak si gira · versione <b id="appVer">2.1</b></p>
   </div>
 </div>
 
@@ -412,6 +425,29 @@
   </div>
 </div>
 
+<div class="modal hidden" id="mPhotoEdit">
+  <div class="mbox">
+    <div class="mhead"><h2 class="chalk">Ritocca la foto</h2><button class="x" data-close>✕</button></div>
+    <div class="pe-wrap"><img id="peImg" alt=""><div class="pe-busy hidden" id="peBusy"><span>RunPod ritocca…</span></div></div>
+    <p class="muted small">Scegli un ritocco veloce o scrivi cosa cambiare. Il volto resta lo stesso.</p>
+    <div class="chipset" id="pePresets"></div>
+    <label>Cosa cambiare<input id="peText" type="text" placeholder="Es. togli la mano sulla spalla sinistra"></label>
+    <div class="actions">
+      <button class="btn primary" id="peGo">✏️ Ritocca (≈ 0,02 $)</button>
+      <button class="btn" id="peUndo">↶ Annulla l'ultimo</button>
+      <button class="btn" id="peOrig">⟲ Foto originale</button>
+    </div>
+    <p class="muted small" id="peStatus"></p>
+  </div>
+</div>
+
+<div class="modal hidden" id="mShot">
+  <div class="mbox">
+    <div class="mhead"><h2 class="chalk" id="shTitle">Inquadratura</h2><button class="x" data-close>✕</button></div>
+    <div id="shBody"></div>
+  </div>
+</div>
+
 <div class="modal hidden" id="mModels">
   <div class="mbox wide">
     <div class="mhead"><h2 class="chalk">Scegli il modello</h2><button class="x" data-close>✕</button></div>
@@ -423,7 +459,7 @@
 <div class="modal hidden" id="mChar">
   <div class="mbox">
     <div class="mhead"><h2 class="chalk">Nuovo personaggio</h2><button class="x" data-close>✕</button></div>
-    <p class="muted small">Foto chiara del volto, frontale e con buona luce.</p>
+    <p class="muted small">Foto chiara del volto, frontale e con buona luce — oppure fallo creare all'AI dalla descrizione.</p>
     <div class="charform">
       <label class="photo" id="charPick">
         <div id="charPreview" class="charph"><span>+ Foto</span></div>
@@ -434,6 +470,7 @@
         <label>Descrizione fissa<input id="charDesc" type="text" placeholder="Es. donna sui 35 anni, capelli rossi corti"></label>
       </div>
     </div>
+    <button class="btn" id="charAi">🎨 Crea la foto con l'AI dalla descrizione (≈ 0,02 $)</button>
     <button class="btn primary big" id="charSave">Salva personaggio</button>
   </div>
 </div>
@@ -523,11 +560,12 @@
 </div>
 
 <div id="toast" class="toast"></div>
-<script src="models.js?v=2.0"></script>
-<script src="app.js?v=2.0"></script>
-<script src="montaggio.js?v=2.0"></script>
-<script src="libreria.js?v=2.0"></script>
-<script src="voce.js?v=2.0"></script>
-<script src="sottotitoli.js?v=2.0"></script>
+<script src="models.js?v=2.1"></script>
+<script src="app.js?v=2.1"></script>
+<script src="montaggio.js?v=2.1"></script>
+<script src="libreria.js?v=2.1"></script>
+<script src="voce.js?v=2.1"></script>
+<script src="sottotitoli.js?v=2.1"></script>
+<script src="regista.js?v=2.1"></script>
 </body>
 </html>

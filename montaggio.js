@@ -620,7 +620,8 @@ async function pollMontage() {
         $('#edStatus').textContent = 'Scarico il film…';
         if (!blob && url) { try { const f = await fetch(url); if (f.ok) blob = await f.blob(); } catch (e) { } }
         if (!blob && !url) throw Object.assign(new Error('RunPod non ha restituito il film'), { fatal: true });
-        await dbPut('films', { id: uid(), title: job.title, blob, url, key: out.key || null, created: Date.now(), dur: out.duration || 0 });
+        const subs = proj().audio.filter(a => a.sub).sort((a, b) => a.start - b.start).map(a => ({ start: +a.start.toFixed(2), end: +(a.start + a.dur).toFixed(2), it: a.sub, en: '' }));
+        await dbPut('films', { id: uid(), title: job.title, blob, url, key: out.key || null, created: Date.now(), dur: out.duration || 0, subs });
         endJob(); toast('Film montato ✓ — lo trovi in "Film montati"');
         return;
       }

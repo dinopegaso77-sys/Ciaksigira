@@ -1,6 +1,6 @@
 /* Ciak si gira — generatore di clip video via RunPod Public Endpoints */
 'use strict';
-const APP_VERSION = '2.0'; // deve coincidere con ?v= in index.html
+const APP_VERSION = '2.1'; // deve coincidere con ?v= in index.html
 
 const API = 'https://api.runpod.ai/v2';
 const $ = s => document.querySelector(s);
@@ -147,6 +147,7 @@ function go(view) {
   $$('.tab').forEach(t => t.classList.toggle('active', t.dataset.view === view));
   $$('.view').forEach(v => v.classList.toggle('active', v.id === 'view-' + view));
   if (view === 'galleria') renderGallery();
+  if (view === 'regista' && window.renderRegia) renderRegia();
   if (view === 'montaggio' && window.renderMontage) renderMontage();
   window.scrollTo(0, 0);
 }
@@ -335,22 +336,29 @@ $('#goBtn').onclick = async () => {
   const est = m.price(o);
   if (est >= 3 && !confirm(`Questa clip costa circa ${money(est)}. Procedo?`)) return;
   const btn = $('#goBtn'); btn.disabled = true; btn.textContent = 'Invio al set…';
-  const endpoint = m.endpoint(o);
   try {
-    const input = m.input(o);
-    const r = await rp(`/${endpoint}/run`, { method: 'POST', body: JSON.stringify({ input }) });
-    if (!r.id) throw new Error('Risposta inattesa da RunPod');
-    const take = nextTake(); ls('take', String(take)); showTake();
-    const job = {
-      id: uid(), jobId: r.id, endpoint, status: r.status || 'IN_QUEUE', created: Date.now(), est, take,
-      settings: { engine: o.engine, prompt: o.rawPrompt, negative: o.negative, ratio: o.ratio, duration: o.duration || o.refDuration || (m.needs.audio ? S.audioDur : 0) || 5, res: o.res, audio: o.audio, charIds: o.charIds, refVideoId: o.refVideoId, klAudio: o.klAudio, ex: o.ex },
-      fullPrompt: o.prompt, input
-    };
-    S.jobs.unshift(job); saveJobs(); renderJobs(); poll(job);
-    toast(`Ciak ${take} in ripresa: puoi chiudere l'app, riprende da sola`);
+    const job = await launchClip(o);
+    toast(`Ciak ${job.take} in ripresa: puoi chiudere l'app, riprende da sola`);
   } catch (err) { toast(err.message === 'Failed to fetch' ? 'Connessione a RunPod non riuscita' : err.message, 5000); }
   btn.disabled = false; btn.textContent = GO_LABEL;
 };
+/* invia un ciak a RunPod e lo segue fino alla Galleria (usato da Crea e dal Regista) */
+async function launchClip(o, extra) {
+  const m = MODELS[o.engine];
+  const est = m.price(o);
+  const endpoint = m.endpoint(o);
+  const input = m.input(o);
+  const r = await rp(`/${endpoint}/run`, { method: 'POST', body: JSON.stringify({ input }) });
+  if (!r.id) throw new Error('Risposta inattesa da RunPod');
+  const take = nextTake(); ls('take', String(take)); showTake();
+  const job = {
+    id: uid(), jobId: r.id, endpoint, status: r.status || 'IN_QUEUE', created: Date.now(), est, take,
+    settings: { engine: o.engine, prompt: o.rawPrompt, negative: o.negative, ratio: o.ratio, duration: o.duration || o.refDuration || (m.needs.audio ? S.audioDur : 0) || 5, res: o.res, audio: o.audio, charIds: o.charIds, refVideoId: o.refVideoId, klAudio: o.klAudio, ex: o.ex, ...(extra || {}) },
+    fullPrompt: o.prompt, input
+  };
+  S.jobs.unshift(job); saveJobs(); renderJobs(); poll(job);
+  return job;
+}
 
 /* ---------- lavori ---------- */
 function saveJobs() { ls('jobs', JSON.stringify(S.jobs.map(({ input, ...j }) => j))); }
@@ -422,7 +430,7 @@ async function poll(job) {
       if (BAD.includes(r.status)) {
         const raw = r.error || (r.output && r.output.error);
         if (await retryWithRawImages(job, raw)) continue;
-        job.done = true; job.error = traduciErrore(raw) + (job.firstError ? '\n— Primo tentativo: ' + job.firstError : ''); saveJobs(); renderJobs(); return;
+        job.done = true; job.error = traduciErrore(raw) + (job.firstError ? '\n— Primo tentativo: ' + job.firstError : ''); saveJobs(); renderJobs(); if (window.regiaRefresh) regiaRefresh(); return;
       }
       saveJobs(); renderJobs();
     } catch (e) {
@@ -501,6 +509,7 @@ async function saveClip(job, url, cost, muxed) {
   backupClip(clip, muxed ? muxed.blob : null); // copia nell'archivio R2, se attivo
   if (MODELS[S.engine].needs.video) fillRefVideos();
   ls('spent', String((parseFloat(ls('spent')) || 0) + clip.cost)); showSpent();
+  if (window.regiaRefresh) regiaRefresh();
 }
 
 /* ---------- galleria ---------- */
@@ -597,8 +606,9 @@ $('#charSave').onclick = async () => {
 };
 function renderChars() {
   const box = $('#chars');
-  box.innerHTML = S.chars.length ? S.chars.map(c => `<div class="ch"><img src="${c.img}" alt=""><button class="ic" data-dc="${c.id}" title="Elimina">✕</button><div class="info"><b>${esc(c.name)}</b><small>${esc(c.desc || '')}</small></div></div>`).join('')
+  box.innerHTML = S.chars.length ? S.chars.map(c => `<div class="ch"><img src="${c.img}" alt=""><button class="ic" data-dc="${c.id}" title="Elimina">✕</button><button class="ic ed" data-pe="${c.id}" title="Ritocca la foto">✏️</button><div class="info"><b>${esc(c.name)}</b><small>${esc(c.desc || '')}</small></div></div>`).join('')
     : '<div class="empty">Il cast è vuoto.<br>Tocca "+ Nuovo" per aggiungere un personaggio.</div>';
+  box.querySelectorAll('[data-pe]').forEach(b => b.onclick = () => window.openPhotoEdit && openPhotoEdit(b.dataset.pe));
   box.querySelectorAll('[data-dc]').forEach(b => b.onclick = async () => {
     if (!confirm('Eliminare questo personaggio?')) return;
     await dbDel('chars', b.dataset.dc); S.chars = S.chars.filter(c => c.id !== b.dataset.dc); S.selChars.delete(b.dataset.dc); renderChars(); renderRefChars();

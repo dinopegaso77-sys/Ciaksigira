@@ -59,6 +59,32 @@ Nella lista "Film montati" premi **💬 Sottotitoli**:
    - "Nessuna": tracce IT ed EN dentro il file, da attivare nel lettore (VLC, iPhone, TV);
    - "Italiano" o "Inglese": la scritta è stampata nel video e si vede ovunque (anche sui social).
 
+## 7. Regista AI (versione 2.1)
+Scheda **Regista**: dall'idea scritta, o dal copione/master in PDF, al film.
+1. **L'idea** — scrivi l'idea oppure carica il PDF del copione; il worker di montaggio ne legge il testo.
+   Scegli durata, genere, formato, modello video e quanti dialoghi vuoi.
+2. **Scrivi la storia** — Qwen3 su RunPod scrive storia, personaggi (aspetto fisso e voce), luoghi,
+   trama in parti con i tempi e, per ogni parte, le inquadrature con il prompt adatto al modello scelto.
+3. **Personaggi** — collega ognuno a una foto del Cast, oppure "🎨 Crea con AI". Scegli la voce:
+   una voce AI oppure una tua voce clonata.
+4. **Gira la parte** — per ogni inquadratura:
+   - voce della battuta (MiniMax o voce clonata);
+   - fotogramma iniziale con i volti del Cast (Seedream);
+   - ciak animato dal fotogramma. Chi parla in camera viene girato con InfiniteTalk, con le labbra a tempo.
+5. **Manda al montaggio** — i ciak vanno in ordine sulla traccia video e le battute sulla traccia voce.
+   Dopo "Monta il film", in 💬 Sottotitoli le frasi italiane sono già pronte: premi "Traduci in inglese".
+
+**Realismo dei movimenti.** Ogni inquadratura viene controllata (punteggio 0–100): azioni a catena, più di 2 persone,
+mani impegnate, movimenti veloci, trasformazioni, camera brusca. Se il punteggio è basso, l'AI la riscrive con un
+movimento semplice e fisico, e le scene complesse diventano ciak più corti.
+
+**Contenuti +18.** La storia viene classificata (per tutti, temi adulti, violenza, esplicito) e per il modello scelto
+l'app ti dice se di solito la accetta. I contenuti sessuali espliciti non vengono generati: c'è "Rendi suggerito".
+
+**Cast.** ✏️ su ogni personaggio per ritoccare la foto (togliere persone, mani o braccia estranee, oggetti, sfondo);
+puoi annullare l'ultimo ritocco o tornare all'originale. **Crea:** ✨ Crea prompt trasforma la tua idea in un prompt
+per il modello scelto, con le regole contro mani in più, arti tagliati e volti che cambiano.
+
 ## Note
 - Non modificare l'endpoint di Fonica Infinity: gli endpoint di Ciak si gira sono separati.
 - I link ai video RunPod durano 7 giorni: con l'archivio R2 attivo ogni ciak ha anche una copia permanente.

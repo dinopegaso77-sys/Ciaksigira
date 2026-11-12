@@ -93,7 +93,8 @@ async function charModelUrl(c) {
 async function prepareModelInputs(o) {
   if (!r2On()) return;
   const chars = o.charIds.map(id => S.chars.find(c => c.id === id)).filter(Boolean);
-  o.charImgs = await Promise.all(chars.map(charModelUrl));
+  const elems = (o.elemIds || []).map(id => S.elems.find(e => e.id === id)).filter(Boolean);
+  o.charImgs = [...await Promise.all(chars.map(charModelUrl)), ...await Promise.all(elems.map(e => elemModelUrl(e)))];
   o.startImg = await toModelUrl(o.startImg, 'foto');
   o.img = o.startImg || o.charImgs[0] || null;
   o.audioIn = await toModelUrl(o.audioIn, 'audio');

@@ -16,7 +16,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Kalam:wght@400;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=2.5.1">
+<link rel="stylesheet" href="style.css?v=2.6">
 </head>
 <body>
 
@@ -48,7 +48,7 @@
       <button class="tab active" data-view="crea">Crea</button>
       <button class="tab" data-view="galleria">Galleria</button>
       <button class="tab" data-view="montaggio">Montaggio</button>
-      <button class="tab" data-view="personaggi">Personaggi</button>
+      <button class="tab" data-view="personaggi">Cast</button>
     </nav>
     <div class="topact">
       <button class="pill hidden" id="jobsPill"><span class="rec"></span><span id="jobsCount"></span></button>
@@ -91,7 +91,7 @@
           <label class="check" id="audioWrap"><input type="checkbox" id="audio" checked> Genera audio (voci, rumori, musica)</label>
           <div id="extras" class="extras hidden"></div>
 
-          <div class="field-label">Personaggi e foto</div>
+          <div class="field-label">Cast e foto</div>
           <p class="refhint" id="refHint"></p>
           <div class="refrow">
             <div id="refChars" class="refchars"></div>
@@ -209,11 +209,13 @@
 
   <section id="view-personaggi" class="view">
     <div class="pagehead">
-      <h1 class="chalk">Personaggi</h1>
-      <button class="btn primary small" data-open="mChar">+ Nuovo</button>
+      <h1 class="chalk">Cast</h1>
+      <div class="ph-act"><button class="btn small" id="compOpen">🎨 Componi</button><button class="btn primary small" id="castNew">+ Nuovo</button></div>
     </div>
-    <p class="muted small intro">Scegli un personaggio in "Crea" e il modello userà la sua foto come riferimento: resta uguale in ogni scena.</p>
+    <div class="cast-tabs" id="castTabs"></div>
+    <p class="muted small intro" id="castIntro"></p>
     <div id="chars" class="chars"></div>
+    <div id="elems" class="chars elems hidden"></div>
   </section>
 
   <!-- ===== MONTAGGIO: EDITOR A TRACCE ===== -->
@@ -338,7 +340,7 @@
     </details>
 
     <button class="btn big" id="lockNow">🔒 Blocca l'app</button>
-    <p class="muted small ver">Ciak si gira · versione <b id="appVer">2.5.1</b></p>
+    <p class="muted small ver">Ciak si gira · versione <b id="appVer">2.6</b></p>
   </div>
 </div>
 
@@ -522,6 +524,56 @@
   </div>
 </div>
 
+<div class="modal hidden" id="mElem">
+  <div class="mbox">
+    <div class="mhead"><h2 class="chalk" id="elTitle">Nuovo elemento</h2><button class="x" data-close>✕</button></div>
+    <div class="seg3" id="elTypes"></div>
+    <div class="row2">
+      <label>Nome<input id="elName" type="text" placeholder="Es. Giubbotto di pelle"></label>
+      <label id="elRatioWrap" class="hidden">Formato<select id="elRatio"><option value="16:9">16:9 orizzontale</option><option value="9:16">9:16 verticale</option><option value="1:1">1:1 quadrato</option></select></label>
+    </div>
+    <label>Com'è? Descrivilo come ti viene<textarea id="elDesc" rows="3"></textarea></label>
+    <label id="elTextWrap" class="hidden">Testo da scrivere nel simbolo (facoltativo)<input id="elText" type="text" placeholder="Es. CIAK SI GIRA"></label>
+    <div class="el-prev hidden" id="elPrev"></div>
+    <div class="actions" id="elActs">
+      <button class="btn primary" id="elAI">✨ Crealo con l'AI (≈ 0,02 $)</button>
+      <label class="btn" for="elFile">📷 Ho già la foto</label><input type="file" id="elFile" accept="image/*">
+    </div>
+    <p class="muted small" id="elStatus"></p>
+  </div>
+</div>
+
+<div class="modal hidden" id="mElemSheet">
+  <div class="mbox wide">
+    <div class="mhead"><h2 class="chalk" id="esTitle">Elemento</h2><button class="x" data-close>✕</button></div>
+    <div class="pe-wrap es-img"><img id="esImg" alt=""><div class="pe-busy hidden" id="esBusy"><span>RunPod modifica…</span></div></div>
+    <div class="row2">
+      <label>Nome<input id="esName" type="text"></label>
+      <label>Descrizione<input id="esDesc" type="text"></label>
+    </div>
+    <div class="es-edit">
+      <input id="esEditTxt" type="text" placeholder="Modifica: es. rendilo rosso scuro, togli la scritta">
+      <button class="btn" id="esEdit">✏️ Modifica (≈ 0,02 $)</button>
+      <button class="btn" id="esUndo" title="Annulla l'ultima modifica">↶</button>
+    </div>
+    <div class="actions">
+      <button class="btn primary" id="esComp">🎨 Componi con questo</button>
+      <button class="btn" id="esStart">🎬 Foto di partenza in Crea</button>
+      <button class="btn hidden" id="esToChar">👤 Aggiungi a un personaggio</button>
+      <a class="btn" id="esDl" target="_blank" rel="noopener">⬇ Scarica</a>
+    </div>
+    <p class="muted small" id="esInfo"></p>
+    <button class="linkbtn" id="esDel">Elimina</button>
+  </div>
+</div>
+
+<div class="modal hidden" id="mComp">
+  <div class="mbox wide">
+    <div class="mhead"><h2 class="chalk">🎨 Componi</h2><button class="x" data-close>✕</button></div>
+    <div id="cpBody"></div>
+  </div>
+</div>
+
 <div class="modal hidden" id="mChar">
   <div class="mbox">
     <div class="mhead"><h2 class="chalk">Nuovo personaggio</h2><button class="x" data-close>✕</button></div>
@@ -627,14 +679,15 @@
 </div>
 
 <div id="toast" class="toast"></div>
-<script src="models.js?v=2.5.1"></script>
-<script src="app.js?v=2.5.1"></script>
-<script src="montaggio.js?v=2.5.1"></script>
-<script src="libreria.js?v=2.5.1"></script>
-<script src="voce.js?v=2.5.1"></script>
-<script src="sottotitoli.js?v=2.5.1"></script>
-<script src="cast.js?v=2.5.1"></script>
-<script src="archivio.js?v=2.5.1"></script>
-<script src="regista.js?v=2.5.1"></script>
+<script src="models.js?v=2.6"></script>
+<script src="app.js?v=2.6"></script>
+<script src="montaggio.js?v=2.6"></script>
+<script src="libreria.js?v=2.6"></script>
+<script src="voce.js?v=2.6"></script>
+<script src="sottotitoli.js?v=2.6"></script>
+<script src="cast.js?v=2.6"></script>
+<script src="archivio.js?v=2.6"></script>
+<script src="regista.js?v=2.6"></script>
+<script src="elementi.js?v=2.6"></script>
 </body>
 </html>

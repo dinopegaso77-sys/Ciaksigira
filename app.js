@@ -1,6 +1,6 @@
 /* Ciak si gira — generatore di clip video via RunPod Public Endpoints */
 'use strict';
-const APP_VERSION = '2.5.1'; // deve coincidere con ?v= in index.html
+const APP_VERSION = '2.6'; // deve coincidere con ?v= in index.html
 
 const API = 'https://api.runpod.ai/v2';
 const $ = s => document.querySelector(s);
@@ -11,7 +11,7 @@ const money = n => (Math.round(n * 100) / 100).toFixed(2).replace('.', ',') + ' 
 
 /* ---------- stato ---------- */
 const S = {
-  engine: 'wan', startImg: null, audioIn: null, audioName: '', selChars: new Set(), chars: [], clips: [],
+  engine: 'wan', startImg: null, audioIn: null, audioName: '', selChars: new Set(), chars: [], selElems: new Set(), elems: [], clips: [],
   filter: 'all', cmp: [], jobs: JSON.parse(ls('jobs') || '[]')
 };
 function ls(k, v) {
@@ -101,10 +101,10 @@ async function showLock() {
 let dbp;
 function db() {
   return dbp ||= new Promise((res, rej) => {
-    const r = indexedDB.open('regista', 2);
+    const r = indexedDB.open('regista', 3);
     r.onupgradeneeded = () => {
       const d = r.result;
-      ['clips', 'chars', 'films', 'audio'].forEach(s => { if (!d.objectStoreNames.contains(s)) d.createObjectStore(s, { keyPath: 'id' }); });
+      ['clips', 'chars', 'films', 'audio', 'elems'].forEach(s => { if (!d.objectStoreNames.contains(s)) d.createObjectStore(s, { keyPath: 'id' }); });
     };
     r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error);
   });
@@ -284,8 +284,10 @@ async function videoSource(c) {
 function currentOpts() {
   const m = MODELS[S.engine];
   const chars = S.chars.filter(c => S.selChars.has(c.id));
+  const elems = S.elems.filter(e => S.selElems.has(e.id));
   let prompt = $('#prompt').value.trim();
   if (chars.length) prompt += '\n' + chars.map(c => `${c.name}: ${c.desc}`.trim()).join('. ');
+  if (elems.length) prompt += '\n' + elems.map(e => `${e.name}: ${e.en || e.desc || ''}`.trim()).join('. ');
   const refVideoId = m.needs.video ? $('#refVideo').value : '';
   const refClip = refVideoId && (S.clips.find(c => c.id === refVideoId) || (window.libClip && libClip(refVideoId)));
   return {
@@ -295,7 +297,7 @@ function currentOpts() {
     duration: m.durations.length ? +$('#duration').value : 0,
     res: m.res.length ? $('#res').value : (m.defRes || '720p'),
     audio: $('#audio').checked, ex: readExtras(),
-    startImg: S.startImg, charImgs: chars.map(c => c.img), charIds: chars.map(c => c.id),
+    startImg: S.startImg, charImgs: [...chars.map(c => c.img), ...elems.map(e => e.img)], charIds: chars.map(c => c.id), elemIds: elems.map(e => e.id),
     img: S.startImg || (chars[0] && chars[0].img) || null,   // per i modelli che vogliono per forza una foto
     audioIn: S.audioIn,
     refVideoId, refDuration: refClip ? refClip.settings.duration : 0,
@@ -323,9 +325,13 @@ function showStart() {
 
 function renderRefChars() {
   const box = $('#refChars');
-  box.innerHTML = S.chars.map(c => `<button class="rc ${S.selChars.has(c.id) ? 'on' : ''}" data-id="${c.id}"><img src="${c.img}" alt="">${esc(c.name)}</button>`).join('');
-  box.querySelectorAll('.rc').forEach(b => b.onclick = () => {
+  box.innerHTML = S.chars.map(c => `<button class="rc ${S.selChars.has(c.id) ? 'on' : ''}" data-id="${c.id}"><img src="${c.img}" alt="">${esc(c.name)}</button>`).join('')
+    + S.elems.filter(e => e.type !== 'composizione' || S.selElems.has(e.id)).map(e => `<button class="rc el ${S.selElems.has(e.id) ? 'on' : ''}" data-eid="${e.id}"><img src="${e.img}" alt="">${esc(e.name)}</button>`).join('');
+  box.querySelectorAll('[data-id]').forEach(b => b.onclick = () => {
     S.selChars.has(b.dataset.id) ? S.selChars.delete(b.dataset.id) : S.selChars.add(b.dataset.id); renderRefChars(); updateCost();
+  });
+  box.querySelectorAll('[data-eid]').forEach(b => b.onclick = () => {
+    S.selElems.has(b.dataset.eid) ? S.selElems.delete(b.dataset.eid) : S.selElems.add(b.dataset.eid); renderRefChars(); updateCost();
   });
 }
 
@@ -368,7 +374,7 @@ async function launchClip(o, extra) {
   const take = nextTake(); ls('take', String(take)); showTake();
   const job = {
     id: uid(), jobId: r.id, endpoint, status: r.status || 'IN_QUEUE', created: Date.now(), est, take,
-    settings: { engine: o.engine, prompt: o.rawPrompt, negative: o.negative, ratio: o.ratio, duration: o.duration || o.refDuration || (m.needs.audio ? S.audioDur : 0) || 5, res: o.res, audio: o.audio, charIds: o.charIds, refVideoId: o.refVideoId, klAudio: o.klAudio, ex: o.ex, ...(extra || {}) },
+    settings: { engine: o.engine, prompt: o.rawPrompt, negative: o.negative, ratio: o.ratio, duration: o.duration || o.refDuration || (m.needs.audio ? S.audioDur : 0) || 5, res: o.res, audio: o.audio, charIds: o.charIds, elemIds: o.elemIds, refVideoId: o.refVideoId, klAudio: o.klAudio, ex: o.ex, ...(extra || {}) },
     fullPrompt: o.prompt, input
   };
   S.jobs.unshift(job); saveJobs(); renderJobs(); poll(job);
@@ -423,6 +429,18 @@ function renderJobs() {
 }
 function removeJob(id) { S.jobs = S.jobs.filter(j => j.id !== id); saveJobs(); renderJobs(); }
 
+/* limiti di attesa: un ciak che non parte (o non finisce) viene annullato invece di restare appeso per ore */
+const QUEUE_MAX = 20 * 60e3;
+const runMax = job => (['sorapro'].includes(job.settings.engine) || (job.settings.engine === 'seedance' && job.settings.res === '1080p') ? 45 : 30) * 60e3;
+async function stuckCheck(job) {
+  const now = Date.now();
+  if (job.status === 'IN_QUEUE' && now - job.created > QUEUE_MAX) return `Rimasto ${Math.round((now - job.created) / 60e3)} min in coda su ${MODELS[job.settings.engine]?.name || 'RunPod'} senza partire`;
+  if (job.status === 'IN_PROGRESS') {
+    job.runSince = job.runSince || now;
+    if (now - job.runSince > runMax(job)) return `In lavorazione da ${Math.round((now - job.runSince) / 60e3)} min su ${MODELS[job.settings.engine]?.name || 'RunPod'} senza finire`;
+  }
+  return '';
+}
 async function poll(job) {
   while (!job.done) {
     await new Promise(r => setTimeout(r, 6000));
@@ -430,6 +448,15 @@ async function poll(job) {
     try {
       const r = await rp(`/${job.endpoint}/status/${job.jobId}`);
       job.status = r.status || job.status;
+      const stuck = !['COMPLETED', ...BAD].includes(job.status) && await stuckCheck(job);
+      if (stuck) {
+        try { await rp(`/${job.endpoint}/cancel/${job.jobId}`, { method: 'POST' }); } catch (e) { }
+        job.done = true; job.status = 'CANCELLED';
+        job.error = `${stuck}: l'ho annullato io (di solito non viene addebitato). Riprova, oppure usa un altro modello (es. Wan 2.6).`;
+        saveJobs(); renderJobs(); if (window.regiaRefresh) regiaRefresh();
+        toast(`Ciak ${job.take} annullato: ${stuck.toLowerCase()}`, 7000);
+        return;
+      }
       if (r.status === 'COMPLETED') {
         const out = r.output || {};
         const url = typeof out === 'string' ? out : (out.result || out.video_url || out.url || (out.videos && out.videos[0]));
@@ -443,7 +470,7 @@ async function poll(job) {
         return;
       }
       if (BAD.includes(r.status)) {
-        const raw = r.error || (r.output && r.output.error);
+        const raw = r.error || (r.output && r.output.error) || r.status;
         if (await retryWithRawImages(job, raw)) continue;
         job.done = true; job.error = traduciErrore(raw) + (job.firstError ? '\n— Primo tentativo: ' + job.firstError : ''); saveJobs(); renderJobs(); if (window.regiaRefresh) regiaRefresh(); return;
       }
@@ -480,6 +507,8 @@ function traduciErrore(e) {
   if (/image/i.test(s) && /(url|invalid|download|fetch)/i.test(s)) return 'Il modello non ha accettato la foto. (' + s.slice(0, 500) + ')';
   if (/safety|sensitive|nsfw|moderat/i.test(s)) return 'Bloccata dal filtro di sicurezza del modello: riformula la scena.';
   if (/balance|credit|insufficient/i.test(s)) return 'Credito RunPod insufficiente.';
+  if (/^"?TIMED_OUT"?$/.test(s.trim())) return 'Tempo scaduto su RunPod (di solito non viene addebitato). Riprova, oppure usa un altro modello (es. Wan 2.6).';
+  if (/^"?CANCELLED"?$/.test(s.trim())) return 'Annullato (da te o da RunPod): di solito non viene addebitato. Riprova, oppure usa un altro modello (es. Wan 2.6).';
   return s ? s.slice(0, 700) : 'Generazione non riuscita';
 }
 
@@ -601,6 +630,7 @@ function loadSettings(s) {
   $('#prompt').value = s.prompt; if (s.negative) $('#negative').value = s.negative;
   $('#audio').checked = s.audio !== false;
   S.selChars = new Set((s.charIds || []).filter(id => S.chars.some(c => c.id === id)));
+  S.selElems = new Set((s.elemIds || []).filter(id => S.elems.some(e => e.id === id)));
   renderRefChars(); updateCost();
 }
 
@@ -630,6 +660,7 @@ function renderChars() {
   box.innerHTML = S.chars.length ? S.chars.map(c => `<button class="ch" data-cs="${c.id}"><img src="${c.img}" alt=""><span class="ch-b">${(c.photos || []).length > 1 ? `<i>📷 ${c.photos.length}</i>` : ''}${c.voiceId ? `<i>${c.voiceId.startsWith('clone:') ? '🎙' : '🗣'}</i>` : ''}${c.master ? '<i>🔒 master</i>' : ''}</span><div class="info"><b>${esc(c.name)}</b><small>${esc(c.desc || '')}</small></div></button>`).join('')
     : '<div class="empty">Il cast è vuoto.<br>Tocca "+ Nuovo" per aggiungere un personaggio.</div>';
   box.querySelectorAll('[data-cs]').forEach(b => b.onclick = () => window.openCharSheet && openCharSheet(b.dataset.cs));
+  if (window.renderCastTabs) renderCastTabs();
 }
 
 /* ---------- impostazioni ---------- */
@@ -678,8 +709,9 @@ $('#resetSpent').onclick = () => { if (confirm('Azzerare il contatore della spes
   try {
     S.chars = (await dbAll('chars')).sort((a, b) => a.created - b.created);
     S.clips = (await dbAll('clips')).sort((a, b) => b.created - a.created);
+    S.elems = (await dbAll('elems')).sort((a, b) => b.created - a.created);
   } catch (e) { toast('Archivio del dispositivo non disponibile'); }
-  setEngine(ls('engine') || 'wan'); showAudioIn(); renderRefChars(); renderChars(); renderJobs();
+  setEngine(ls('engine') || 'wan'); showAudioIn(); renderRefChars(); renderChars(); if (window.renderCast) renderCast(); renderJobs();
   S.jobs.filter(j => !j.done && !BAD.includes(j.status)).forEach(poll);
   $('#prompt').oninput = updateCost;
   if (!key()) openSettings(); // primo avvio: subito al collegamento

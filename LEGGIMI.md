@@ -1,4 +1,4 @@
-# Ciak si gira — versione 2.0
+# Ciak si gira — versione 2.6
 
 App personale per creare ciak video con RunPod, montarli in piccoli film con un editor a tracce,
 dare loro una voce (anche la tua, clonata) e aggiungere i sottotitoli in italiano e inglese.
@@ -6,7 +6,7 @@ Tutta l'elaborazione avviene su RunPod: il browser invia le richieste, mostra le
 
 ## 1. L'app (GitHub Pages) — repository `Ciaksigira`
 1. Carica nella radice: `index.html`, `style.css`, `app.js`, `models.js`, `montaggio.js`, `libreria.js`,
-   `voce.js`, `sottotitoli.js`, `manifest.webmanifest` e le icone `icona*.png` / `icona.svg`.
+   `voce.js`, `sottotitoli.js`, `cast.js`, `archivio.js`, `regista.js`, `elementi.js`, `manifest.webmanifest` e le icone `icona*.png` / `icona.svg`.
 2. Settings → Pages → Branch `main` → Save.
 3. Apri l'app, crea la password, incolla la chiave API RunPod e premi "Prova chiave".
 
@@ -109,6 +109,22 @@ Le immagini create da RunPod vengono copiate direttamente dal worker (gratis); l
 Galleria → **Archivio**: filtri per tipo (video, immagini, audio) e provenienza, anteprime, scarica, elimina, spazio usato.
 "Svuota temporanei" elimina solo i file di servizio (`temp/`, `anteprima/`) più vecchi di 2 giorni.
 R2 è gratis fino a 10 GB, poi circa 0,015 $ al GB al mese.
+
+## 9. Oggetti, sfondi, simboli e 🎨 Componi (versione 2.6)
+La scheda **Cast** ha cinque sezioni: 👤 Personaggi · 👕 Oggetti · 🏞 Sfondi · ✳️ Simboli · 🖼 Composizioni.
+- **+ Nuovo** in Oggetti, Sfondi o Simboli: descrivilo e premi "✨ Crealo con l'AI" (Qwen Image, circa 0,02 $), oppure carica una tua foto.
+  Per i simboli puoi scrivere il testo esatto del logo. Crea segni tuoi: i marchi famosi vengono rifiutati o storpiati.
+- Tocca un elemento per aprirne la scheda: ✏️ modifica a parole (circa 0,02 $, con ↶ per annullare), usalo come foto di partenza in Crea,
+  scaricalo, oppure "🎨 Componi con questo".
+- **🎨 Componi** mescola fino a 6 elementi in una sola immagine: 📸 foto o scena, 👥 coppia o gruppo, 👕 prova costume, 📣 banner (con il testo esatto),
+  ✳️ logo. Formati 1:1, 4:5, 3:2, 16:9, 9:16. Motore "Fedele" (Nano Banana 2, circa 0,09 $; 2K circa 0,13 $) oppure "Economico" (Seedream, circa 0,03 $).
+  Senza elementi l'immagine nasce solo dalla descrizione (circa 0,02 $). "✏️ Correggi" modifica il risultato senza rifarlo da zero.
+  Per i personaggi con il master 🔒 viene usato il master; nella prova costume la foto a figura intera.
+- Ogni immagine pagata viene salvata subito in 🖼 Composizioni e in R2 (`immagini/`): non si perde. Da lì puoi aggiungerla alle foto di un personaggio
+  (il master non cambia).
+- **Crea:** oggetti, sfondi e simboli compaiono accanto ai personaggi tra i riferimenti.
+- **Regista:** nella finestra dell'inquadratura, "Oggetti e sfondi in scena" (al massimo 3) entrano nel fotogramma come riferimento.
+  "Usa questi anche nelle altre inquadrature di questa parte" tiene uguali luogo e oggetti in tutta la parte.
 
 ## Note
 - Non modificare l'endpoint di Fonica Infinity: gli endpoint di Ciak si gira sono separati.

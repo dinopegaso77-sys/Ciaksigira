@@ -383,7 +383,8 @@ function shotState(sh, p) {
 function kfSig(p, sh) {
   const B = p.bible || {}, look = B.look ? JSON.stringify(B.look) : '';
   const casts = (sh.chars || []).map(n => { const c = charOfName(p, n).cast; return c ? c.id + ':' + (c.master ? 'M' + c.master.t : '') + charPhotos(c).map(x => x.kind + x.img.length + x.img.slice(-12)).join(',') : n; }).join('|') + JSON.stringify(storyChangesFor(p, sh));
-  return hashStr([(p.kfEngine || 'fedele'), sh.prompt, sh.frame || '', JSON.stringify(sh.gaze || []), JSON.stringify(sh.place || []), look, p.ratio, casts, isTalk(p, sh) ? 'talk' : ''].join('#'));
+  const els = shElems(sh).map(e => e.id + ':' + e.img.length + e.img.slice(-12)).join(',');
+  return hashStr([(p.kfEngine || 'fedele'), sh.prompt, sh.frame || '', JSON.stringify(sh.gaze || []), JSON.stringify(sh.place || []), look, p.ratio, casts, isTalk(p, sh) ? 'talk' : ''].join('#') + (els ? '#E' + els : ''));
 }
 const kfFresh = kf => !!kf && (Date.now() - kf.t < 6.5 * 864e5 || !!kf.key);
 function kfValid(p, sh) { return !!(sh.kf && sh.kf.sig === kfSig(p, sh) && kfFresh(sh.kf)); }
@@ -398,7 +399,10 @@ const KF_ENGINES = {
   eco: { label: 'Economico (Seedream)', ep: 'seedream-v4-edit', price: 0.03 }
 };
 const kfEngine = p => KF_ENGINES[(p && p.kfEngine) || 'fedele'] || KF_ENGINES.fedele;
-function kfPrice(p, sh) { return (sh.chars || []).some(n => charOfName(p, n).cast) ? kfEngine(p).price : 0.02; }
+/* oggetti, sfondi e simboli del Cast collegati a un'inquadratura: entrano nel fotogramma come riferimenti */
+function shElems(sh) { return (sh.elems || []).map(id => S.elems.find(e => e.id === id)).filter(Boolean); }
+const kfUsesRefs = (p, sh) => (sh.chars || []).some(n => charOfName(p, n).cast) || shElems(sh).length > 0;
+function kfPrice(p, sh) { return kfUsesRefs(p, sh) ? kfEngine(p).price : 0.02; }
 function costParts(p, sh) {
   const voice = voiceValid(p, sh) ? 0 : (sh.lines || []).slice(0, 1).reduce((k, l) => k + l.text.length * 0.00005, 0);
   const frame = kfValid(p, sh) ? 0 : kfPrice(p, sh);
@@ -789,7 +793,7 @@ async function pilotRun(items, fn) {
   await Promise.all([w(), w(), w()]);
   return { ok, err: null };
 }
-function imgEndpointsFor(p, shots) { return shots.map(s => (s.chars || []).some(n => charOfName(p, n).cast) ? kfEngine(p).ep : 'qwen-image-t2i'); }
+function imgEndpointsFor(p, shots) { return shots.map(s => kfUsesRefs(p, s) ? kfEngine(p).ep : 'qwen-image-t2i'); }
 function voiceEndpointsFor(p, shots) {
   return shots.flatMap(s => (s.lines || []).slice(0, 1)).map(l => { const v = voiceOfChar(p, l.char); return v.startsWith('clone:') ? voceId() : 'minimax-speech-02-hd'; });
 }
@@ -865,24 +869,28 @@ function lookOf(p) { const B = p.bible || {}; return B.look ? [B.look.style_en, 
 async function makeKeyframe(p, sh) {
   const look = lookOf(p);
   const refs = refsForShot(p, sh);
-  const prev = refs.length ? prevShotWithKf(p, sh) : null;
+  const els = shElems(sh).slice(0, 3);
+  const prev = refs.length || els.length ? prevShotWithKf(p, sh) : null;
   const who = refs.map(x => `reference image${x.n.length > 1 ? 's' : ''} ${x.n.join(' and ')} show ${x.c.name}${x.c.master ? ` (image ${x.n[0]} is the locked MASTER sheet of ${x.c.name}: follow it over any text)` : ''}`).join('; ');
   const lockTxt = refs.map(x => `${x.c.name} must look EXACTLY like ${x.c.master ? 'the master reference' : 'the reference photos'}: same face, same hair colour, length, texture and hairstyle, same age and body${x.c.master && x.c.master.traits_en ? ', ' + x.c.master.traits_en : ''}; ignore any different description of ${x.c.name}'s hair, face or age in the scene text.`).join(' ');
   const chg = storyChangesFor(p, sh);
   const bl = blockingText(sh);
   const still = (sh.frame || sh.prompt) + (bl && !(sh.frame || '').includes(bl) ? ' ' + bl : '');
   const nRefs = refs.reduce((k, x) => k + x.ph.length, 0);
-  const cont = prev ? ` The last reference image (${nRefs + 1}) is the PREVIOUS SHOT of the same film: keep the same clothes, hairstyle, location and lighting for continuity, but compose this new shot as described.` : '';
-  const ident = refs.length ? `IDENTITY FIRST: ${who}.${cont} Keep exactly their faces, hairstyles and clothing; each person appears only once and is not mixed with the others. ${lockTxt} ${chg} ` : (chg ? chg + ' ' : '');
+  const elTxt = els.map((e, k) => elemRefText(e, nRefs + k + 1)).join(' ');
+  const cont = prev ? ` The last reference image (${nRefs + els.length + 1}) is the PREVIOUS SHOT of the same film: keep the same clothes, hairstyle, location and lighting for continuity, but compose this new shot as described.` : '';
+  const ident = refs.length ? `IDENTITY FIRST: ${who}.${elTxt ? ' ' + elTxt : ''}${cont} Keep exactly their faces, hairstyles and clothing; each person appears only once and is not mixed with the others. ${lockTxt} ${chg} `
+    : els.length ? `REFERENCES: ${elTxt}${cont} ${chg ? chg + ' ' : ''}` : (chg ? chg + ' ' : '');
   const kfPrompt = `${ident}Cinematic film still, ${RATIO_TXT[p.ratio] || RATIO_TXT['16:9']}. SCENE: ${still} ${look ? 'Look: ' + look + '.' : ''} Photorealistic, natural skin texture, correct anatomy with two arms and two hands per person, relaxed natural hands, nobody else in frame, matte screens and glass without reflections, no text.`;
   const neg = NEG_BASE + ', reflection, mirror image, clasped hands, vertical frame';
   const gen = async extra => {
-    if (refs.length) {
+    if (refs.length || els.length) {
       const imgs = [];
       for (const x of refs) for (const ph of x.ph) imgs.push(r2On() ? await toModelUrl(ph.img, 'cast-' + x.c.id + '-' + ph.id) : ph.img);
+      for (const e of els) imgs.push(await elemModelUrl(e));
       if (prev) { try { imgs.push(await kfUrl(prev.kf)); } catch (e) { } }
       const E = kfEngine(p);
-      if (E.ep === 'google-nano-banana-2-edit') return await rpJob(E.ep, { prompt: kfPrompt + extra, images: imgs.slice(0, 6), resolution: '1k', aspect_ratio: p.ratio, output_format: 'jpeg' });
+      if (E.ep === 'google-nano-banana-2-edit') return await rpJob(E.ep, { prompt: kfPrompt + extra, images: imgs.slice(0, 8), resolution: '1k', aspect_ratio: p.ratio, output_format: 'jpeg' });
       return await rpJob(E.ep, { prompt: kfPrompt + extra, images: imgs, size: kfSize(p.ratio), enable_safety_checker: true });
     }
     return await rpJob('qwen-image-t2i', { prompt: kfPrompt + extra, negative_prompt: neg, size: kfSize(p.ratio), seed: -1, enable_safety_checker: true });
@@ -967,6 +975,9 @@ function openShot(p, pi, si) {
         <input data-gz="${esc(n)}" value="${esc(((sh.gaze || []).find(g => g.char === n) || {}).at || '')}" placeholder="guarda… (es. Luca, la cassetta)">
         <input data-pl="${esc(n)}" value="${esc(((sh.place || []).find(g => g.char === n) || {}).where || '')}" placeholder="dove sta… (es. a sinistra, davanti)"></div>`).join('')}
       <small class="muted">Puoi scrivere in italiano: li traduco io prima del fotogramma.</small></div>` : ''}
+    ${S.elems.length ? `<div class="sh-block"><b>Oggetti e sfondi in scena</b><div class="chipset">${S.elems.map(e => `<button class="rc el ${(sh.elems || []).includes(e.id) ? 'on' : ''}" data-she="${e.id}"><img src="${e.img}" alt="">${esc(e.name)}</button>`).join('')}</div>
+      <small class="muted">Entrano nel fotogramma come riferimento (max 3), così restano uguali in ogni inquadratura.</small>
+      ${(sh.elems || []).length && p.parts[pi].shots.length > 1 ? '<button class="linkbtn" id="shElAll">Usa questi anche nelle altre inquadrature di questa parte</button>' : ''}</div>` : ''}
     <label>Primo fotogramma (foto ferma, inglese)<textarea id="shFrame" rows="5" placeholder="Si scrive da solo quando crei il fotogramma">${esc(sh.frame || '')}</textarea></label>
     <label>Movimento per ${esc(MODELS[p.engine].name)} (inglese)<textarea id="shPrompt" rows="6">${esc(sh.prompt)}</textarea></label>
     <details class="adv"><summary>Fisica del movimento e cosa evitare</summary>
@@ -992,6 +1003,16 @@ function openShot(p, pi, si) {
   $$('#shBody [data-lt], #shBody [data-le], #shBody [data-gz], #shBody [data-pl]').forEach(x => x.onchange = save);
   ['#shPrompt', '#shFrame', '#shMotion', '#shNeg'].forEach(x => $(x).onchange = save);
   const reopen = () => { const np = rgList().find(x => x.id === p.id); if (np) openShot(np, pi, si); renderRegia(); };
+  $$('#shBody [data-she]').forEach(b => b.onclick = () => {
+    save();
+    rgShotMut(p.id, sh.id, x => { const s0 = new Set(x.elems || []); s0.has(b.dataset.she) ? s0.delete(b.dataset.she) : s0.add(b.dataset.she); x.elems = [...s0].slice(-3); });
+    reopen();
+  });
+  const ea = $('#shElAll'); if (ea) ea.onclick = () => {
+    save();
+    rgMut(p.id, x => { const src = rgFind(x, sh.id); x.parts[pi].shots.forEach(s => { s.elems = [...(src.elems || [])]; }); });
+    toast('Oggetti e sfondi copiati in tutta la parte: i fotogrammi già fatti andranno rifatti'); reopen();
+  };
   const ok = $('#shOk'); if (ok) ok.onclick = () => { rgShotMut(p.id, sh.id, x => { x.ok = true; }); reopen(); };
   const go1 = $('#shGo'); if (go1) go1.onclick = async () => {
     save(); go1.disabled = true; go1.textContent = 'Invio…';

@@ -5,7 +5,7 @@
 'use strict';
 
 /* ---------------- salvataggio delle immagini create ---------------- */
-const IMG_KINDS = { fotogramma: 'Fotogramma', master: 'Master', ritratto: 'Ritratto AI', vista: 'Vista AI', ritocco: 'Ritocco', foto: 'Foto Cast' };
+const IMG_KINDS = { fotogramma: 'Fotogramma', master: 'Master', ritratto: 'Ritratto AI', vista: 'Vista AI', ritocco: 'Ritocco', foto: 'Foto Cast', oggetto: 'Oggetto', sfondo: 'Sfondo', simbolo: 'Simbolo', composizione: 'Composizione' };
 const stamp = () => new Date().toISOString().replace(/[-:T]/g, '').slice(0, 15).replace(/^(\d{8})(\d{6}).*/, '$1-$2');
 /* copia un'immagine di RunPod in R2 (immagini/…) e la restituisce come jpeg; senza archivio la scarica e basta */
 async function storeImage(url, kind, name, max = 1280) {
@@ -37,6 +37,10 @@ async function syncCastToR2() {
       }
       if (changed) { await dbPut('chars', c); ARCH.dirty = true; }
     }
+    for (const e of S.elems) {
+      if (e.key || !String(e.img).startsWith('data:')) continue;
+      try { e.key = (await uploadToR2(await dataUrlToBlob(e.img), `${e.type}-${safeFile(e.name)}.jpg`, 'immagini')).key; await dbPut('elems', e); ARCH.dirty = true; } catch (err) { }
+    }
   } finally { castSyncing = false; }
 }
 
@@ -53,7 +57,7 @@ function archKindOf(key) {
 }
 function archLabel(key) {
   const n = libName(key);
-  const m = n.match(/^(fotogramma|master|ritratto|vista|ritocco|foto)-/);
+  const m = n.match(/^(fotogramma|master|ritratto|vista|ritocco|foto|oggetto|sfondo|simbolo|composizione)-/);
   return m ? `${IMG_KINDS[m[1]]} · ${n.slice(m[0].length).replace(/\.[a-z0-9]+$/i, '')}` : n;
 }
 async function archLoad() {

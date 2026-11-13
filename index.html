@@ -16,7 +16,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Kalam:wght@400;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=2.6">
+<link rel="stylesheet" href="style.css?v=2.6.1">
 </head>
 <body>
 
@@ -322,6 +322,22 @@
       <p id="r2Status" class="status"></p>
     </details>
 
+    <details class="sec" id="secBk">
+      <summary><span>Backup delle chiavi</span><em id="sumBk">su file</em></summary>
+      <p class="muted small">Salva la chiave RunPod e gli ID degli endpoint (montaggio, voce) in un file cifrato, per rimetterli su un altro dispositivo o dopo un reset.
+        Il file si apre solo con la password che scegli qui: senza, è illeggibile. Tienilo in un posto sicuro (non mandarlo in chat).</p>
+      <div class="row2">
+        <label>Password del file<input id="bkPw" type="password" autocomplete="new-password" placeholder="almeno 6 caratteri"></label>
+        <label>Ripeti la password<input id="bkPw2" type="password" autocomplete="new-password"></label>
+      </div>
+      <div class="actions">
+        <button class="btn primary" id="bkSave">💾 Salva su file</button>
+        <label class="btn" for="bkFile">📂 Carica da file</label><input type="file" id="bkFile" accept=".json,.ciak,application/json" class="hidden">
+        <button class="btn danger" id="bkDel">🗑 Elimina da questo dispositivo</button>
+      </div>
+      <p id="bkStatus" class="status"></p>
+    </details>
+
     <details class="sec">
       <summary><span>Password e blocco</span><em>blocco dopo 30 min</em></summary>
       <label>Password attuale<input id="pwOld" type="password" autocomplete="current-password"></label>
@@ -340,7 +356,7 @@
     </details>
 
     <button class="btn big" id="lockNow">🔒 Blocca l'app</button>
-    <p class="muted small ver">Ciak si gira · versione <b id="appVer">2.6</b></p>
+    <p class="muted small ver">Ciak si gira · versione <b id="appVer">2.6.1</b></p>
   </div>
 </div>
 
@@ -679,15 +695,15 @@
 </div>
 
 <div id="toast" class="toast"></div>
-<script src="models.js?v=2.6"></script>
-<script src="app.js?v=2.6"></script>
-<script src="montaggio.js?v=2.6"></script>
-<script src="libreria.js?v=2.6"></script>
-<script src="voce.js?v=2.6"></script>
-<script src="sottotitoli.js?v=2.6"></script>
-<script src="cast.js?v=2.6"></script>
-<script src="archivio.js?v=2.6"></script>
-<script src="regista.js?v=2.6"></script>
-<script src="elementi.js?v=2.6"></script>
+<script src="models.js?v=2.6.1"></script>
+<script src="app.js?v=2.6.1"></script>
+<script src="montaggio.js?v=2.6.1"></script>
+<script src="libreria.js?v=2.6.1"></script>
+<script src="voce.js?v=2.6.1"></script>
+<script src="sottotitoli.js?v=2.6.1"></script>
+<script src="cast.js?v=2.6.1"></script>
+<script src="archivio.js?v=2.6.1"></script>
+<script src="regista.js?v=2.6.1"></script>
+<script src="elementi.js?v=2.6.1"></script>
 </body>
 </html>

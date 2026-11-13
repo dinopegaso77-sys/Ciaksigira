@@ -126,6 +126,14 @@ La scheda **Cast** ha cinque sezioni: 👤 Personaggi · 👕 Oggetti · 🏞 Sf
 - **Regista:** nella finestra dell'inquadratura, "Oggetti e sfondi in scena" (al massimo 3) entrano nel fotogramma come riferimento.
   "Usa questi anche nelle altre inquadrature di questa parte" tiene uguali luogo e oggetti in tutta la parte.
 
+## 10. Backup delle chiavi (versione 2.6.1)
+⚙︎ → **Backup delle chiavi**:
+- **💾 Salva su file**: scegli una password (due volte) e l'app scarica `ciaksigira-chiavi-AAAA-MM-GG.json` con la chiave RunPod
+  e gli ID di montaggio e voce, cifrati (AES-256). Senza quella password il file è illeggibile.
+- **📂 Carica da file**: scrivi la password del file e scegli il file; chiave e ID tornano al loro posto, cifrati con la password dell'app.
+- **🗑 Elimina da questo dispositivo**: toglie chiave e ID dal dispositivo; ciak, film, Cast e archivio restano.
+Le chiavi R2 non sono nel file: restano nelle variabili dell'endpoint di montaggio su RunPod.
+
 ## Note
 - Non modificare l'endpoint di Fonica Infinity: gli endpoint di Ciak si gira sono separati.
 - I link ai video RunPod durano 7 giorni: con l'archivio R2 attivo ogni ciak ha anche una copia permanente.

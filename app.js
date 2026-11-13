@@ -1,6 +1,6 @@
 /* Ciak si gira — generatore di clip video via RunPod Public Endpoints */
 'use strict';
-const APP_VERSION = '2.6'; // deve coincidere con ?v= in index.html
+const APP_VERSION = '2.6.1'; // deve coincidere con ?v= in index.html
 
 const API = 'https://api.runpod.ai/v2';
 const $ = s => document.querySelector(s);
@@ -685,6 +685,60 @@ $('#chgPw').onclick = async () => {
   if (!(await checkPassword(a))) { s.textContent = 'Password attuale errata'; s.className = 'status ko'; return; }
   S.apiKey = keep; await setPassword(b);
   $('#pwOld').value = ''; $('#pwNew').value = ''; s.textContent = 'Password cambiata ✓'; s.className = 'status ok';
+};
+/* ---------- backup delle chiavi: file cifrato con una password a scelta (AES-GCM, PBKDF2 250.000) ---------- */
+function bkMsg(m, ok) { const s = $('#bkStatus'); s.textContent = m; s.className = 'status ' + (ok === true ? 'ok' : ok === false ? 'ko' : ''); }
+function bkData() { return { runpodKey: key(), montEndpoint: ls('montEndpoint') || '', voceEndpoint: ls('voceEndpoint') || '', r2: ls('r2') || '' }; }
+$('#bkSave').onclick = async () => {
+  const pw = $('#bkPw').value, pw2 = $('#bkPw2').value;
+  if (key() !== $('#setKey').value.trim() && $('#setKey').value.trim()) await storeKey();
+  const d = bkData();
+  if (!d.runpodKey && !d.montEndpoint && !d.voceEndpoint) return bkMsg('Non c\'è ancora niente da salvare', false);
+  if (pw.length < 6) return bkMsg('Scegli una password di almeno 6 caratteri', false);
+  if (pw !== pw2) return bkMsg('Le due password non coincidono', false);
+  try {
+    const salt = crypto.getRandomValues(new Uint8Array(16)), iv = crypto.getRandomValues(new Uint8Array(12));
+    const k = (await derive(pw, salt)).aes;
+    const ct = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, k, enc.encode(JSON.stringify(d)));
+    const file = JSON.stringify({ app: 'Ciak si gira', tipo: 'chiavi cifrate', v: 1, creato: new Date().toISOString(), salt: b64(salt), iv: b64(iv), dati: b64(ct) }, null, 1);
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([file], { type: 'application/json' }));
+    a.download = `ciaksigira-chiavi-${new Date().toISOString().slice(0, 10)}.json`;
+    document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+    $('#bkPw').value = ''; $('#bkPw2').value = '';
+    bkMsg(`File salvato ✓ (${[d.runpodKey && 'chiave RunPod', d.montEndpoint && 'montaggio', d.voceEndpoint && 'voce'].filter(Boolean).join(', ')}). Ricorda la password: senza non si apre.`, true);
+  } catch (e) { bkMsg('Non salvato: ' + e.message, false); }
+};
+$('#bkFile').onchange = async ev => {
+  const f = ev.target.files[0]; ev.target.value = ''; if (!f) return;
+  const pw = $('#bkPw').value;
+  if (!pw) { bkMsg('Scrivi prima la password del file, poi scegli il file', false); return $('#bkPw').focus(); }
+  let j; try { j = JSON.parse(await f.text()); } catch (e) { return bkMsg('Questo non è un file di chiavi di Ciak si gira', false); }
+  if (!j || !j.salt || !j.iv || !j.dati) return bkMsg('Questo non è un file di chiavi di Ciak si gira', false);
+  let d;
+  try {
+    const k = (await derive(pw, unb64(j.salt))).aes;
+    d = JSON.parse(dec.decode(await crypto.subtle.decrypt({ name: 'AES-GCM', iv: unb64(j.iv) }, k, unb64(j.dati))));
+  } catch (e) { return bkMsg('Password del file errata (oppure file rovinato)', false); }
+  const cur = bkData();
+  if ((cur.runpodKey && d.runpodKey && cur.runpodKey !== d.runpodKey) && !confirm('Su questo dispositivo c\'è già una chiave RunPod diversa. Sostituirla con quella del file?')) return bkMsg('Niente è cambiato');
+  if (d.runpodKey) { S.apiKey = d.runpodKey; await encryptKey(S.apiKey); $('#setKey').value = S.apiKey; }
+  if (d.montEndpoint) ls('montEndpoint', d.montEndpoint);
+  if (d.voceEndpoint) ls('voceEndpoint', d.voceEndpoint);
+  if (d.r2) ls('r2', d.r2);
+  keySummary(); if (window.montSummary) montSummary(); if (window.voceSummary) voceSummary(); if (window.r2Summary) r2Summary();
+  $('#bkPw').value = ''; $('#bkPw2').value = '';
+  bkMsg(`Caricati ✓ ${[d.runpodKey && 'chiave RunPod', d.montEndpoint && 'montaggio', d.voceEndpoint && 'voce'].filter(Boolean).join(', ')}. La chiave ora è cifrata con la password dell'app. Premi "Prova chiave" per controllare.`, true);
+};
+$('#bkDel').onclick = () => {
+  const d = bkData();
+  if (!d.runpodKey && !d.montEndpoint && !d.voceEndpoint) return bkMsg('Su questo dispositivo non ci sono chiavi', true);
+  if (!confirm('Eliminare da questo dispositivo la chiave RunPod e gli ID di montaggio e voce?\n\nCiak, film, Cast e archivio R2 restano. Se non hai un file di backup, dovrai reinserire la chiave a mano.')) return;
+  S.apiKey = ''; localStorage.removeItem('regista_keyEnc');
+  ['montEndpoint', 'voceEndpoint', 'r2'].forEach(k => localStorage.removeItem('regista_' + k));
+  $('#setKey').value = ''; $('#setMont').value = ''; $('#setVoce').value = '';
+  keySummary(); if (window.montSummary) montSummary(); if (window.voceSummary) voceSummary(); if (window.r2Summary) r2Summary();
+  bkMsg('Chiavi eliminate da questo dispositivo ✓', true);
 };
 $('#testKey').onclick = async () => {
   await storeKey();

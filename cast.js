@@ -284,10 +284,12 @@ function lookPhotos(c) {
   if (pick.length < 2 && c.master) pick.push({ img: c.master.img, key: c.master.key, id: 'master', kind: 'master' });
   return pick;
 }
+/* Kimi accetta solo immagini dentro la richiesta (base64), non link: le mando in jpeg da 1024 px */
 async function lookImgUrl(c, p) {
-  if (!r2On()) return p.img;
-  if (p.key) { try { return await libUrl(p.key); } catch (e) { } }
-  return await toModelUrl(p.img, 'cast-' + c.id + '-' + p.id);
+  const s = String(p.img || '');
+  if (s.startsWith('data:')) return await fileToJpeg(await (await fetch(s)).blob(), 1024);
+  if (p.key && r2On()) { try { return await urlToJpeg(await libUrl(p.key), 1024); } catch (e) { } }
+  return await urlToJpeg(s, 1024);
 }
 async function visionChat(system, text, urls, maxTokens = 4000) {
   const content = [{ type: 'text', text }, ...urls.map(url => ({ type: 'image_url', image_url: { url } }))];
@@ -312,7 +314,7 @@ async function visionChat(system, text, urls, maxTokens = 4000) {
       addSpend(u ? ((u.prompt_tokens || u.input || 0) * 0.95 + (u.completion_tokens || u.output || 0) * 4) / 1e6 : 0.02);
       if (txt && String(txt).trim()) return cleanLLM(txt);
       last = new Error('risposta vuota');
-    } catch (e) { last = e; if (/non valida|401/.test(e.message)) break; }
+    } catch (e) { last = e; if (/non valida|401|image|immagin/i.test(e.message)) break; }
   }
   throw last || new Error('nessuna risposta');
 }
@@ -345,7 +347,8 @@ $('#csLookAI').onclick = async () => {
     toast('Aspetto descritto ✓ Controllalo e correggi se serve');
   } catch (e) {
     st.className = 'status ko';
-    st.textContent = 'Non riuscito: ' + e.message + '. Puoi scrivere tu l\'aspetto nel riquadro: lo traduco io per i modelli.';
+    const msg = (String(e.message).match(/"message":"([^"]{1,160})/) || [])[1] || String(e.message).split(' traceback')[0].slice(0, 200);
+    st.textContent = 'Non riuscito: ' + msg + '. Puoi scrivere tu l\'aspetto nel riquadro: lo traduco io per i modelli.';
     b.disabled = false; b.textContent = '🔍 Riprova (≈ 0,02 $)'; return;
   }
   b.disabled = false; renderCsLook();

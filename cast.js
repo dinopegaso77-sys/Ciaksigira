@@ -20,6 +20,10 @@ async function saveChar(c) {
   if (window.syncCastToR2) setTimeout(syncCastToR2, 500);
 }
 
+/* aspetto in inglese da mettere nei prompt: descrizione letta dalle foto, oppure la scheda del personaggio di fantasia */
+function charLookEn(c) { return (c && ((c.look && c.look.en) || c.look_en)) || ''; }
+function charPromptText(c) { return charLookEn(c) || c.desc || ''; }
+
 /* =================== scheda personaggio =================== */
 const CS = { id: null };
 function csChar() { return S.chars.find(x => x.id === CS.id); }
@@ -28,7 +32,7 @@ function openCharSheet(id) {
   CS.id = id; charPhotos(c);
   $('#csTitle').textContent = c.name;
   $('#csName').value = c.name; $('#csDesc').value = c.desc || '';
-  renderCsMaster(); renderCsPhotos(); renderCsVoice();
+  renderCsMaster(); renderCsPhotos(); renderCsVoice(); renderCsLook();
   openM('mCharSheet');
 }
 function renderCsPhotos() {
@@ -262,3 +266,100 @@ function renderCsMaster() {
     toast(`Master di ${c.name} bloccato 🔒 Da ora è il riferimento in ogni scena`);
   };
 }
+
+/* =================== 🧬 ASPETTO DALLE FOTO =================== 
+   Kimi K2.6 su RunPod (modello che vede le immagini) guarda le foto reali del personaggio e scrive
+   una descrizione italiana (da leggere e correggere) e una inglese per i prompt. Circa 0,01–0,02 $. */
+const VISION_EP = 'moonshot-kimi', VISION_MODEL = 'kimi-k2.6';
+const LOOK_SYS = `You are a casting director and portrait photographer. You describe a REAL person from reference photos so that an image/video AI can recreate exactly the same person. All photos show the same person.
+Describe ONLY what is visible and stable across the photos, with concrete, precise details: shapes, proportions, colours with nuances (e.g. "salt-and-pepper, about 40% grey"). Never mention ethnicity, race, nationality, religion, health, weight judgements or attractiveness: describe skin tone and complexion instead. Give the apparent age; if the user's note states an age, use it. If photos disagree (beard, glasses, hair length) say what is most frequent and mention the variant.
+Reply ONLY with JSON:
+{"genere":"uomo|donna","eta":40,
+"it":"Italian, one line per label, exactly these labels: Volto: (forma, fronte, zigomi, mascella, mento)\\nOcchi e sopracciglia: \\nNaso e bocca: \\nBarba e pelle: (barba/baffi, carnagione, rughe, nei, segni)\\nCapelli: (colore e quanto grigio, lunghezza, consistenza, taglio, attaccatura)\\nFisico: (altezza apparente, corporatura, spalle, postura)\\nSegni particolari: (occhiali, cicatrici, tatuaggi visibili, orecchini; 'nessuno' se non ce ne sono)\\nAbiti nelle foto: ",
+"en":"English, 70-110 words, comma-separated concrete visual traits for prompts. Start with gender and apparent age, then face shape, forehead, cheekbones, jaw and chin, eyes (colour, shape), eyebrows, nose, lips, facial hair, skin tone and texture, wrinkles and marks, glasses, hair (colour incl. amount of grey, length, texture, style, hairline), body (height impression, build, shoulders, posture). No clothing, no name.",
+"en_outfit":"English, 10-25 words: the clothing seen in the photos"}`;
+function lookPhotos(c) {
+  const ph = charPhotos(c), order = ['volto', 'profilo', 'figura', 'altro'];
+  const pick = [...ph].sort((a, b) => order.indexOf(a.kind) - order.indexOf(b.kind)).slice(0, 4).map(p => ({ img: p.img, key: p.key, id: p.id, kind: p.kind }));
+  if (pick.length < 2 && c.master) pick.push({ img: c.master.img, key: c.master.key, id: 'master', kind: 'master' });
+  return pick;
+}
+async function lookImgUrl(c, p) {
+  if (!r2On()) return p.img;
+  if (p.key) { try { return await libUrl(p.key); } catch (e) { } }
+  return await toModelUrl(p.img, 'cast-' + c.id + '-' + p.id);
+}
+async function visionChat(system, text, urls, maxTokens = 4000) {
+  const content = [{ type: 'text', text }, ...urls.map(url => ({ type: 'image_url', image_url: { url } }))];
+  const messages = [{ role: 'system', content: system }, { role: 'user', content }];
+  const tries = [
+    () => rp(`/${VISION_EP}/openai/v1/chat/completions`, { method: 'POST', retry: 1, body: JSON.stringify({ model: VISION_MODEL, messages, max_tokens: maxTokens, temperature: 0.6, chat_template_kwargs: { thinking: false } }) }),
+    () => rp(`/${VISION_EP}/openai/v1/chat/completions`, { method: 'POST', retry: 1, body: JSON.stringify({ model: VISION_MODEL, messages, max_tokens: maxTokens, temperature: 0.6 }) }),
+    async () => {
+      let r = await rp(`/${VISION_EP}/runsync`, { method: 'POST', retry: 1, body: JSON.stringify({ input: { model: VISION_MODEL, messages, sampling_params: { max_tokens: maxTokens, temperature: 0.6 } } }) });
+      for (let n = 0; r && r.id && !['COMPLETED', ...BAD].includes(r.status) && n < 60; n++) { await wait(3000); r = await rp(`/${VISION_EP}/status/${r.id}`); }
+      if (r && BAD.includes(r.status)) throw new Error(r.error || r.status);
+      return r && r.output !== undefined ? (Array.isArray(r.output) ? r.output[0] : r.output) : r;
+    }
+  ];
+  let last;
+  for (const t of tries) {
+    try {
+      const r = await t();
+      const ch = r && r.choices && r.choices[0];
+      const txt = (ch && ((ch.message && ch.message.content) || ch.text)) || deepText(r);
+      const u = r && r.usage;
+      addSpend(u ? ((u.prompt_tokens || u.input || 0) * 0.95 + (u.completion_tokens || u.output || 0) * 4) / 1e6 : 0.02);
+      if (txt && String(txt).trim()) return cleanLLM(txt);
+      last = new Error('risposta vuota');
+    } catch (e) { last = e; if (/non valida|401/.test(e.message)) break; }
+  }
+  throw last || new Error('nessuna risposta');
+}
+function renderCsLook() {
+  const c = csChar(); if (!c) return;
+  const L = c.look || {};
+  $('#csLook').value = L.it || '';
+  $('#csLookAI').textContent = L.it ? '↻ Rifai dalle foto (≈ 0,02 $)' : '🔍 Descrivi dalle foto (≈ 0,02 $)';
+  const en = charLookEn(c);
+  $('#csLookEnBox').classList.toggle('hidden', !en); $('#csLookEn').textContent = en;
+  const st = $('#csLookSt');
+  st.className = 'status' + (L.it ? ' ok' : '');
+  st.textContent = L.it ? `Scritta ${L.edited ? 'e corretta da te' : 'dalle foto'} il ${new Date(L.t).toLocaleDateString('it-IT')}${L.n ? ` (${L.n} foto)` : ''}${charPhotos(c).length !== (L.n || 0) && !L.edited ? ' · hai cambiato le foto: puoi rifarla' : ''}.`
+    : c.look_en ? 'Personaggio di fantasia: per i prompt uso la sua scheda (vedi sotto).' : 'Ancora nessuna descrizione: nel prompt finirebbe solo "' + (c.desc || c.name) + '".';
+}
+$('#csLookAI').onclick = async () => {
+  const c = csChar(); if (!c) return;
+  if (!key()) { toast('Collega prima RunPod'); return openSettings(); }
+  if (c.look && c.look.edited && !confirm('Hai corretto tu la descrizione. Rifarla dalle foto la sostituisce. Continuare?')) return;
+  const b = $('#csLookAI'), st = $('#csLookSt'); b.disabled = true; b.textContent = '🔍 Guardo le foto…'; st.className = 'status'; st.textContent = 'Kimi K2.6 su RunPod sta studiando le foto (di solito 20–60 secondi)…';
+  try {
+    const ph = lookPhotos(c);
+    const urls = []; for (const p of ph) urls.push(await lookImgUrl(c, p));
+    const txt = await visionChat(LOOK_SYS, `Person: ${c.name}. User's note: ${c.desc || '(none)'}. ${ph.length} photo(s) follow, kinds: ${ph.map(p => p.kind).join(', ')}.`, urls);
+    const j = parseJSON(txt);
+    if (!j || !j.it || !j.en) throw new Error('il modello non ha descritto le foto (risposta: ' + String(txt).slice(0, 80) + '…)');
+    c.look = { it: String(j.it).replace(/\\n/g, '\n').trim(), en: String(j.en).trim(), outfit_en: j.en_outfit || '', gender: j.genere || '', age: j.eta || null, t: Date.now(), n: charPhotos(c).length, edited: false };
+    if (!c.desc && (j.genere || j.eta)) c.desc = [j.genere, j.eta ? j.eta + ' anni' : ''].filter(Boolean).join(' ');
+    await saveChar(c); $('#csDesc').value = c.desc || '';
+    toast('Aspetto descritto ✓ Controllalo e correggi se serve');
+  } catch (e) {
+    st.className = 'status ko';
+    st.textContent = 'Non riuscito: ' + e.message + '. Puoi scrivere tu l\'aspetto nel riquadro: lo traduco io per i modelli.';
+    b.disabled = false; b.textContent = '🔍 Riprova (≈ 0,02 $)'; return;
+  }
+  b.disabled = false; renderCsLook();
+};
+$('#csLook').onchange = async () => {
+  const c = csChar(); if (!c) return;
+  const it = $('#csLook').value.trim();
+  if (!it) { delete c.look; await saveChar(c); return renderCsLook(); }
+  c.look = { ...(c.look || {}), it, edited: true, t: Date.now() };
+  await saveChar(c);
+  const st = $('#csLookSt'); st.className = 'status'; st.textContent = 'Preparo il testo inglese per i prompt…';
+  try {
+    c.look.en = (await llm('You convert an Italian physical description of a real person into an English description for image/video prompts. Output ONLY the description: 70-110 words, comma-separated concrete visual traits, gender and apparent age first, then face, eyes, eyebrows, nose, lips, facial hair, skin, hair, body. No clothing, no name.', it, 600)).replace(/^["']|["']$/g, '').trim();
+    if (c.look.en.length < 20 || /^[{\[]/.test(c.look.en)) throw new Error('traduzione non valida');
+  } catch (e) { c.look.en = it.replace(/\n/g, ', '); }
+  await saveChar(c); renderCsLook();
+};

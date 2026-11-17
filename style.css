@@ -745,3 +745,5 @@ label.btn{display:inline-flex;align-items:center;gap:6px;margin:0;font-family:"I
 @media (max-width:480px){.cp-it,.cp-it img,.cp-add span{width:76px}.cp-it img,.cp-add span{height:76px}}
 .cp-go{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;border-top:2px solid var(--line2);padding-top:12px;margin-top:6px}
 .cp-go .btn.big{flex:1 1 220px}
+#csLook{display:block;width:100%;box-sizing:border-box;min-height:220px;font-family:system-ui,-apple-system,"Segoe UI",sans-serif!important;font-style:normal!important;font-weight:400!important;margin:6px 0 4px;background:#0d0d0d;color:var(--text);border:1px solid var(--line2);border-radius:10px;padding:10px 12px;font:inherit;font-size:15px;line-height:1.5;resize:vertical}
+#csLook::placeholder{color:var(--muted);font-style:normal}

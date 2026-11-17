@@ -331,8 +331,8 @@ async function compImgUrl(it) {
 function compRefLine(it, n) {
   if (it.k === 'e') return elemRefText(it.obj, n);
   const c = it.obj;
-  return c.master ? `Image ${n} is the locked reference sheet of ${c.name} (the same person shown in three views: draw ${c.name} only ONCE).`
-    : `Image ${n} shows ${c.name}, a real person.`;
+  return c.master ? `Image ${n} is the locked reference sheet of ${c.name}${charLookEn(c) ? ` (${charLookEn(c)})` : ''}: the same person shown in three views, draw ${c.name} only ONCE.`
+    : `Image ${n} shows ${c.name}, a real person${charLookEn(c) ? ` (${charLookEn(c)})` : ''}.`;
 }
 function compPrompt(items, descEn, base) {
   const off = base ? 1 : 0;

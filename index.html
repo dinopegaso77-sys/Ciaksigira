@@ -16,7 +16,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Kalam:wght@400;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=2.6.1">
+<link rel="stylesheet" href="style.css?v=2.7">
 </head>
 <body>
 
@@ -356,7 +356,7 @@
     </details>
 
     <button class="btn big" id="lockNow">🔒 Blocca l'app</button>
-    <p class="muted small ver">Ciak si gira · versione <b id="appVer">2.6.1</b></p>
+    <p class="muted small ver">Ciak si gira · versione <b id="appVer">2.7</b></p>
   </div>
 </div>
 
@@ -468,8 +468,13 @@
     <div class="mhead"><h2 class="chalk" id="csTitle">Personaggio</h2><button class="x" data-close>✕</button></div>
     <div class="row2">
       <label>Nome<input id="csName" type="text"></label>
-      <label>Descrizione fissa<input id="csDesc" type="text"></label>
+      <label>Descrizione breve<input id="csDesc" type="text" placeholder="Es. uomo 49 anni"></label>
     </div>
+    <div class="cs-sec"><b>🧬 Aspetto</b><span class="muted small">Volto e fisico descritti dalle sue foto. È il testo che l'app scrive nel prompt ogni volta che lo richiami (Crea, Regista, Componi). Puoi correggerlo.</span></div>
+    <textarea id="csLook" rows="7" placeholder="Premi &quot;Descrivi dalle foto&quot;: l'AI guarda tutte le sue foto e scrive volto, occhi, naso, bocca, barba, pelle, capelli, fisico e segni particolari."></textarea>
+    <div class="actions"><button class="btn primary" id="csLookAI">🔍 Descrivi dalle foto (≈ 0,02 $)</button></div>
+    <p class="status" id="csLookSt"></p>
+    <details class="adv hidden" id="csLookEnBox"><summary>Testo inglese che va nei prompt</summary><p class="muted small" id="csLookEn"></p></details>
     <div class="cs-sec"><b>🔒 Master</b><span class="muted small">La tavola di riferimento creata da tutte le sue foto: una volta bloccata non cambia più, se non lo chiedi tu o la storia.</span></div>
     <div id="csMaster" class="cs-master"></div>
     <div class="cs-sec"><b>📷 Foto</b><span class="muted small">Più foto = più inquadrature riuscite. Il Regista sceglie da solo quelle adatte a ogni scena.</span></div>
@@ -695,15 +700,15 @@
 </div>
 
 <div id="toast" class="toast"></div>
-<script src="models.js?v=2.6.1"></script>
-<script src="app.js?v=2.6.1"></script>
-<script src="montaggio.js?v=2.6.1"></script>
-<script src="libreria.js?v=2.6.1"></script>
-<script src="voce.js?v=2.6.1"></script>
-<script src="sottotitoli.js?v=2.6.1"></script>
-<script src="cast.js?v=2.6.1"></script>
-<script src="archivio.js?v=2.6.1"></script>
-<script src="regista.js?v=2.6.1"></script>
-<script src="elementi.js?v=2.6.1"></script>
+<script src="models.js?v=2.7"></script>
+<script src="app.js?v=2.7"></script>
+<script src="montaggio.js?v=2.7"></script>
+<script src="libreria.js?v=2.7"></script>
+<script src="voce.js?v=2.7"></script>
+<script src="sottotitoli.js?v=2.7"></script>
+<script src="cast.js?v=2.7"></script>
+<script src="archivio.js?v=2.7"></script>
+<script src="regista.js?v=2.7"></script>
+<script src="elementi.js?v=2.7"></script>
 </body>
 </html>

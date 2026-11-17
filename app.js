@@ -1,6 +1,6 @@
 /* Ciak si gira — generatore di clip video via RunPod Public Endpoints */
 'use strict';
-const APP_VERSION = '2.6.1'; // deve coincidere con ?v= in index.html
+const APP_VERSION = '2.7'; // deve coincidere con ?v= in index.html
 
 const API = 'https://api.runpod.ai/v2';
 const $ = s => document.querySelector(s);
@@ -286,7 +286,7 @@ function currentOpts() {
   const chars = S.chars.filter(c => S.selChars.has(c.id));
   const elems = S.elems.filter(e => S.selElems.has(e.id));
   let prompt = $('#prompt').value.trim();
-  if (chars.length) prompt += '\n' + chars.map(c => `${c.name}: ${c.desc}`.trim()).join('. ');
+  if (chars.length) prompt += '\n' + chars.map(c => `${c.name}: ${charPromptText(c)}`.trim()).join('. ');
   if (elems.length) prompt += '\n' + elems.map(e => `${e.name}: ${e.en || e.desc || ''}`.trim()).join('. ');
   const refVideoId = m.needs.video ? $('#refVideo').value : '';
   const refClip = refVideoId && (S.clips.find(c => c.id === refVideoId) || (window.libClip && libClip(refVideoId)));
@@ -657,7 +657,7 @@ $('#charSave').onclick = async () => {
 };
 function renderChars() {
   const box = $('#chars');
-  box.innerHTML = S.chars.length ? S.chars.map(c => `<button class="ch" data-cs="${c.id}"><img src="${c.img}" alt=""><span class="ch-b">${(c.photos || []).length > 1 ? `<i>📷 ${c.photos.length}</i>` : ''}${c.voiceId ? `<i>${c.voiceId.startsWith('clone:') ? '🎙' : '🗣'}</i>` : ''}${c.master ? '<i>🔒 master</i>' : ''}</span><div class="info"><b>${esc(c.name)}</b><small>${esc(c.desc || '')}</small></div></button>`).join('')
+  box.innerHTML = S.chars.length ? S.chars.map(c => `<button class="ch" data-cs="${c.id}"><img src="${c.img}" alt=""><span class="ch-b">${(c.photos || []).length > 1 ? `<i>📷 ${c.photos.length}</i>` : ''}${c.voiceId ? `<i>${c.voiceId.startsWith('clone:') ? '🎙' : '🗣'}</i>` : ''}${c.look && c.look.it ? '<i>🧬</i>' : ''}${c.master ? '<i>🔒 master</i>' : ''}</span><div class="info"><b>${esc(c.name)}</b><small>${esc(c.desc || '')}</small></div></button>`).join('')
     : '<div class="empty">Il cast è vuoto.<br>Tocca "+ Nuovo" per aggiungere un personaggio.</div>';
   box.querySelectorAll('[data-cs]').forEach(b => b.onclick = () => window.openCharSheet && openCharSheet(b.dataset.cs));
   if (window.renderCastTabs) renderCastTabs();

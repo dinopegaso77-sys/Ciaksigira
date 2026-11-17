@@ -270,7 +270,7 @@ $('#magicBtn').onclick = async () => {
   const btn = $('#magicBtn'); btn.disabled = true; btn.textContent = '✨ Scrivo…';
   try {
     const sys = `You are a top cinematographer and an expert prompt engineer for AI video generators. You turn rough ideas (often in Italian) into one production-ready ENGLISH prompt for the given model, aiming at real, physically believable motion and cinema quality.\n${RULES_EN}\nMODEL GUIDE: ${MODEL_GUIDE[o.engine] || MODEL_GUIDE.wan}\nReply ONLY with JSON: {"prompt":"...","negative":"...","tips":"one or two short tips in Italian about what could still go wrong and how to frame it better"}`;
-    const usr = `Idea: ${raw}\nModel: ${m.name}\nClip length: ${o.duration || o.refDuration || 5} s\nAspect ratio: ${o.ratio}\nStarting photo given: ${o.startImg ? 'yes (the first frame is fixed: describe motion from it)' : 'no'}\n${chars.length ? 'Characters (keep exactly this look): ' + chars.map(c => `${c.name}: ${c.desc || 'as in the reference photo'}`).join('; ') : ''}\nDO NOT invent extra people.`;
+    const usr = `Idea: ${raw}\nModel: ${m.name}\nClip length: ${o.duration || o.refDuration || 5} s\nAspect ratio: ${o.ratio}\nStarting photo given: ${o.startImg ? 'yes (the first frame is fixed: describe motion from it)' : 'no'}\n${chars.length ? 'Characters (keep exactly this look): ' + chars.map(c => `${c.name}: ${charPromptText(c) || 'as in the reference photo'}`).join('; ') : ''}\nDO NOT invent extra people.`;
     const r = await llmJSON(sys, usr, 1200);
     if (!r.prompt) throw new Error('nessun prompt ricevuto');
     magicPrev = { prompt: raw, neg: $('#negative').value };
@@ -617,7 +617,7 @@ function regiaRefresh() { clearTimeout(rgRefT); rgRefT = setTimeout(() => { if (
 function castBrief() {
   return S.chars.length ? S.chars.map(c => c.master
     ? `- ${c.name}: HAS A LOCKED MASTER REFERENCE IMAGE. Never invent or change face, hair, age or body${c.master.traits_en ? ' (' + c.master.traits_en + ')' : ''}; for look_en write only "as in the master reference".`
-    : `- ${c.name}: HAS REFERENCE PHOTOS. Never invent or change face, hair, age or body${c.desc ? ' (' + c.desc + ')' : ''}; for look_en write only "as in the reference photos".`).join('\n') : '(empty: invent the characters)';
+    : `- ${c.name}: HAS REFERENCE PHOTOS. Never invent or change face, hair, age or body${charPromptText(c) ? ' (' + charPromptText(c) + ')' : ''}; for look_en write only "as in the reference photos".`).join('\n') : '(empty: invent the characters)';
 }
 async function rgWrite(p) {
   if (!key()) { toast('Collega prima RunPod'); return openSettings(); }
@@ -664,7 +664,7 @@ JSON schema:
       try { const B2 = await llmJSON(sys, usr + `\n\nYOUR PREVIOUS ANSWER WAS WRONG: ${bad}. Fix it and reply with the full JSON again.`, 3500); if (!rgCharCheck(p, B2)) B = B2; } catch (e) { }
     }
     steps.forEach(s => s.st = 'done'); steps[0].d = B.themes || steps[0].d; rgThinkRender();
-    (B.characters || []).forEach((c, k) => { const m = S.chars.find(x => x.name.toLowerCase() === String(c.cast || c.name).toLowerCase()); c.castId = m ? m.id : null; c.voiceId = (m && m.voiceId) || autoVoice(c, k); if (m && m.master) c.look_en = 'as in the master reference' + (m.master.traits_en ? ' (' + m.master.traits_en + ')' : ''); else if (m) c.look_en = 'as in the reference photos'; });
+    (B.characters || []).forEach((c, k) => { const m = S.chars.find(x => x.name.toLowerCase() === String(c.cast || c.name).toLowerCase()); c.castId = m ? m.id : null; c.voiceId = (m && m.voiceId) || autoVoice(c, k); if (m && m.master) c.look_en = 'as in the master reference' + (m.master.traits_en ? ' (' + m.master.traits_en + ')' : ''); else if (m) c.look_en = 'as in the reference photos' + (charLookEn(m) ? ' (' + charLookEn(m) + ')' : ''); });
     let parts = (B.parts || []).map(x => ({ id: uid(), title: x.title, start: +x.start || 0, end: +x.end || 0, summary: x.summary, shots: [] }));
     if (!parts.length) throw new Error('nessuna parte nella trama');
     p.bible = B; p.parts = parts; rgSave(p);
@@ -871,7 +871,7 @@ async function makeKeyframe(p, sh) {
   const refs = refsForShot(p, sh);
   const els = shElems(sh).slice(0, 3);
   const prev = refs.length || els.length ? prevShotWithKf(p, sh) : null;
-  const who = refs.map(x => `reference image${x.n.length > 1 ? 's' : ''} ${x.n.join(' and ')} show ${x.c.name}${x.c.master ? ` (image ${x.n[0]} is the locked MASTER sheet of ${x.c.name}: follow it over any text)` : ''}`).join('; ');
+  const who = refs.map(x => `reference image${x.n.length > 1 ? 's' : ''} ${x.n.join(' and ')} show ${x.c.name}${charLookEn(x.c) ? ` (${charLookEn(x.c)})` : ''}${x.c.master ? ` (image ${x.n[0]} is the locked MASTER sheet of ${x.c.name}: follow it over any text)` : ''}`).join('; ');
   const lockTxt = refs.map(x => `${x.c.name} must look EXACTLY like ${x.c.master ? 'the master reference' : 'the reference photos'}: same face, same hair colour, length, texture and hairstyle, same age and body${x.c.master && x.c.master.traits_en ? ', ' + x.c.master.traits_en : ''}; ignore any different description of ${x.c.name}'s hair, face or age in the scene text.`).join(' ');
   const chg = storyChangesFor(p, sh);
   const bl = blockingText(sh);

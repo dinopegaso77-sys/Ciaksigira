@@ -134,6 +134,14 @@ La scheda **Cast** ha cinque sezioni: 👤 Personaggi · 👕 Oggetti · 🏞 Sf
 - **🗑 Elimina da questo dispositivo**: toglie chiave e ID dal dispositivo; ciak, film, Cast e archivio restano.
 Le chiavi R2 non sono nel file: restano nelle variabili dell'endpoint di montaggio su RunPod.
 
+## 11. Aspetto dalle foto (versione 2.7)
+Nella scheda del personaggio, **🧬 Aspetto → 🔍 Descrivi dalle foto** (circa 0,01–0,02 $): Kimi K2.6 su RunPod, un modello che vede le immagini,
+guarda fino a 4 foto e scrive volto, occhi e sopracciglia, naso e bocca, barba e pelle, capelli, fisico, segni particolari e abiti visti nelle foto.
+Puoi correggere il testo: l'app prepara da sola la versione inglese ("Testo inglese che va nei prompt").
+Da quel momento, quando richiami il personaggio in Crea, nel Regista (fotogrammi e storia) e in Componi, nel prompt va la descrizione completa
+e non più solo la "descrizione breve" (es. "uomo 49 anni"). La descrizione non contiene mai origine o etnia: solo tratti visibili.
+Se aggiungi o cambi foto, la scheda te lo segnala: puoi rifarla.
+
 ## Note
 - Non modificare l'endpoint di Fonica Infinity: gli endpoint di Ciak si gira sono separati.
 - I link ai video RunPod durano 7 giorni: con l'archivio R2 attivo ogni ciak ha anche una copia permanente.

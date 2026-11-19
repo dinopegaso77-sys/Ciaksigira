@@ -16,7 +16,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Kalam:wght@400;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=2.7.1">
+<link rel="stylesheet" href="style.css?v=2.8">
 </head>
 <body>
 
@@ -201,9 +201,11 @@
   <!-- ===== PERSONAGGI ===== -->
   <section id="view-regista" class="view">
     <div class="pagehead">
-      <h1 class="chalk">Regista AI</h1>
-      <div class="ph-act"><select id="rgProjects" aria-label="Le tue regie"></select><button class="btn primary small" id="rgNew">+ Nuova</button></div>
+      <h1 class="chalk" id="rgHead">Regista AI</h1>
+      <div class="ph-act"><select id="rgProjects" aria-label="Le tue regie"></select><button class="btn primary small" id="rgNew">+ Nuova</button>
+        <select id="drSeries" class="hidden" aria-label="Le tue serie"></select><button class="btn primary small hidden" id="drNew">+ Nuova serie</button></div>
     </div>
+    <div class="seg2 rg-mode" id="rgMode"><button data-m="film" class="active">🎬 Film</button><button data-m="serie">📺 Serie drama</button></div>
     <div id="rgBody"></div>
   </section>
 
@@ -356,7 +358,7 @@
     </details>
 
     <button class="btn big" id="lockNow">🔒 Blocca l'app</button>
-    <p class="muted small ver">Ciak si gira · versione <b id="appVer">2.7.1</b></p>
+    <p class="muted small ver">Ciak si gira · versione <b id="appVer">2.8</b></p>
   </div>
 </div>
 
@@ -700,15 +702,16 @@
 </div>
 
 <div id="toast" class="toast"></div>
-<script src="models.js?v=2.7.1"></script>
-<script src="app.js?v=2.7.1"></script>
-<script src="montaggio.js?v=2.7.1"></script>
-<script src="libreria.js?v=2.7.1"></script>
-<script src="voce.js?v=2.7.1"></script>
-<script src="sottotitoli.js?v=2.7.1"></script>
-<script src="cast.js?v=2.7.1"></script>
-<script src="archivio.js?v=2.7.1"></script>
-<script src="regista.js?v=2.7.1"></script>
-<script src="elementi.js?v=2.7.1"></script>
+<script src="models.js?v=2.8"></script>
+<script src="app.js?v=2.8"></script>
+<script src="montaggio.js?v=2.8"></script>
+<script src="libreria.js?v=2.8"></script>
+<script src="voce.js?v=2.8"></script>
+<script src="sottotitoli.js?v=2.8"></script>
+<script src="cast.js?v=2.8"></script>
+<script src="archivio.js?v=2.8"></script>
+<script src="regista.js?v=2.8"></script>
+<script src="drama.js?v=2.8"></script>
+<script src="elementi.js?v=2.8"></script>
 </body>
 </html>

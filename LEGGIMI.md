@@ -142,6 +142,18 @@ Da quel momento, quando richiami il personaggio in Crea, nel Regista (fotogrammi
 e non più solo la "descrizione breve" (es. "uomo 49 anni"). La descrizione non contiene mai origine o etnia: solo tratti visibili.
 Se aggiungi o cambi foto, la scheda te lo segnala: puoi rifarla.
 
+## 12. Serie drama (versione 2.8)
+Regista → **📺 Serie drama**: micro-drama verticali a episodi come su ReelShort.
+1. **La serie** — quanti personaggi (e chi dal Cast), l'idea, fino a 2 "motori della storia" (vendetta, identità segreta, erede nascosto…),
+   numero di episodi (10 di base), durata (60 s), episodi gratis (3), modello video. "📺 Scrivi la serie" (≈ 0,05 $) crea premessa,
+   personaggi con cosa vogliono e cosa nascondono, luoghi, e la scaletta: per ogni episodio gancio (primi 3 secondi), riassunto e colpo di scena.
+   L'ultimo episodio gratis ha la svolta più forte (⚡ svolta del muro).
+2. **Personaggi** — collegali qui al Cast: valgono per tutti gli episodi.
+3. **Episodi** — "✍️ Scrivi le inquadrature" (≈ 0,04 $) trasforma l'episodio in un progetto del Regista 9:16 con le regole del drama
+   (gancio nel primo ciak, colpo di scena sull'ultimo, primi piani, battute brevi e cariche). "🎬 Apri nel Regista": storyboard, approva, gira, montaggio,
+   come per i film (senza cartello iniziale: l'episodio parte subito dal gancio).
+La stima del costo per episodio e per la serie è sotto le opzioni.
+
 ## Note
 - Non modificare l'endpoint di Fonica Infinity: gli endpoint di Ciak si gira sono separati.
 - I link ai video RunPod durano 7 giorni: con l'archivio R2 attivo ogni ciak ha anche una copia permanente.

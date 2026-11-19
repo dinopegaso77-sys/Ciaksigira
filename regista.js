@@ -418,6 +418,7 @@ function needsKeyframe(p) { return MODELS[p.engine].needs.image !== 'no'; }
 
 /* =================== REGISTA: interfaccia =================== */
 function renderRegia() {
+  if (typeof DR !== 'undefined' && DR.mode === 'serie') return renderDrama();
   const list = rgList();
   if (RG.cur !== '__draft' && !list.some(p => p.id === RG.cur)) RG.cur = list[0] ? list[0].id : '__draft';
   const opts = list.map(p => `<option value="${p.id}">${esc((p.bible && p.bible.title) || (p.idea || 'Regia').slice(0, 30))}</option>`);
@@ -430,9 +431,12 @@ function renderRegia() {
   const hasB = !!p.bible;
   const SH = hasB ? rgStoryHtml(p) : { left: '', right: '' };
   box.className = hasB ? 'rg-grid' : '';
+  const D = p.drama;
   box.innerHTML = `<div class="rg-left">
-  <div class="rg-card rg-idea">
-    <div class="rg-step"><b>1</b><span>L'idea</span></div>
+  ${D ? `<div class="dr-banner"><span>📺 <b>${esc(D.series || 'Serie')}</b> · episodio ${D.n} di ${D.of}${D.wall ? ' · ⚡ svolta del muro' : ''}</span><button class="btn small" id="drBack">← Torna alla serie</button></div>` : ''}
+  <div class="rg-card rg-idea ${D ? 'is-ep' : ''}">
+    <div class="rg-step"><b>1</b><span>${D ? 'L\'episodio' : 'L\'idea'}</span></div>
+    ${D ? `<p class="dr-hook"><i>Gancio</i> ${esc(D.hook || '')}</p><p class="dr-cliff"><i>Colpo di scena</i> ${esc(D.cliffhanger || '')}</p>` : ''}
     <div class="rg-who first">
       <label>Quanti personaggi <b class="req">*</b><select id="rgN" class="${p.nChars ? '' : 'need'}"><option value="0" ${p.nChars ? '' : 'selected'} disabled>Scegli…</option>${[1, 2, 3, 4].map(v => `<option value="${v}" ${p.nChars == v ? 'selected' : ''}>${v}</option>`).join('')}</select></label>
       ${S.chars.length ? `<div class="rg-castsel"><span>Dal Cast (facoltativo)</span><div class="chipset">${S.chars.map(c => `<button class="chip cc ${(p.castSel || []).includes(c.id) ? 'on' : ''}" data-csel="${c.id}"><img src="${c.img}" alt="">${esc(c.name)}</button>`).join('')}</div></div>` : '<p class="muted small">Il Cast è vuoto: i personaggi li inventa il Regista e poi li crei con l\'intervista.</p>'}
@@ -452,13 +456,13 @@ function renderRegia() {
       <label>Modello video<select id="rgEngine">${RG_MODELS.map(k => `<option value="${k}" ${p.engine === k ? 'selected' : ''}>${MODELS[k].name}</option>`).join('')}</select></label>
     </div>
     <div class="rg-opts rg-opts2">
-      <label>Dialoghi<select id="rgDialog">${[['no', 'Nessuno (solo immagini)'], ['pochi', 'Pochi e brevi'], ['copione', 'Come nel copione']].map(([v, t]) => `<option value="${v}" ${p.dialog === v ? 'selected' : ''}>${t}</option>`).join('')}</select></label>
+      <label>Dialoghi<select id="rgDialog">${[['no', 'Nessuno (solo immagini)'], ['pochi', 'Pochi e brevi'], ['copione', 'Come nel copione'], ...(D ? [['drama', 'Drama: battute brevi e cariche']] : [])].map(([v, t]) => `<option value="${v}" ${p.dialog === v ? 'selected' : ''}>${t}</option>`).join('')}</select></label>
     </div>
     <label class="rg-budget">Fotogrammi con i personaggi<select id="rgKf">${Object.entries(KF_ENGINES).map(([k, v]) => `<option value="${k}" ${(p.kfEngine || 'fedele') === k ? 'selected' : ''}>${v.label} · ≈ ${money(v.price)}</option>`).join('')}</select></label>
     <label class="rg-budget">Budget massimo del film ($) <input id="rgBudget" type="number" min="0" step="1" inputmode="decimal" placeholder="nessun limite" value="${p.budget || ''}"></label>
     <label class="check"><input type="checkbox" id="rgLip" ${p.lipsync !== false ? 'checked' : ''}> Labbra sincronizzate quando un personaggio parla in camera (InfiniteTalk)</label>
     <label class="check"><input type="checkbox" id="rgAudio" ${p.audio ? 'checked' : ''}> Suoni d'ambiente nei ciak (la musica la metti tu al montaggio)</label>
-    <button class="btn primary big ${p.nChars ? '' : 'off'}" id="rgWrite">${hasB ? '↻ Riscrivi tutto da capo' : '🎬 Scrivi la storia'} <small>≈ 0,05 $</small></button>
+    <button class="btn primary big ${p.nChars ? '' : 'off'}" id="rgWrite">${D ? '↻ Riscrivi l\'episodio' : hasB ? '↻ Riscrivi tutto da capo' : '🎬 Scrivi la storia'} <small>≈ ${D ? '0,04' : '0,05'} $</small></button>
     ${RG.cur !== '__draft' ? '<button class="linkbtn" id="rgDel">Elimina questa regia</button>' : ''}
   </div>
   <div id="rgThink"></div>
@@ -469,7 +473,8 @@ function renderRegia() {
 }
 function rgThinkRender() {
   const t = RG.thinking, el = $('#rgThink'); if (!el) return;
-  if (!t || t.pid !== RG.cur) { el.innerHTML = ''; return; }
+  const curId = typeof DR !== 'undefined' && DR.mode === 'serie' ? DR.cur : RG.cur;
+  if (!t || t.pid !== curId) { el.innerHTML = ''; return; }
   el.innerHTML = `<div class="rg-card rg-think"><div class="rg-step"><b>✦</b><span>Il regista sta lavorando</span></div>
     <ol>${t.steps.map(s => `<li class="${s.st}"><i>${s.st === 'done' ? '✓' : s.st === 'run' ? '' : '·'}</i><div><b>${esc(s.t)}</b><small>${esc(s.d || '')}</small></div></li>`).join('')}</ol></div>`;
 }
@@ -574,7 +579,16 @@ function rgWireIdea(p) {
   const pd = $('#rgPdfDel'); if (pd) pd.onclick = () => { p.script = null; if (p.dialog === 'copione') p.dialog = 'pochi'; if (rgList().some(x => x.id === p.id)) rgSave(p); renderRegia(); };
   $('#rgIdea').addEventListener('input', upd);
   $('#rgEngine').onchange = () => { upd(); if (p.bible) renderRegia(); };
-  $('#rgWrite').onclick = () => { upd(); rgWrite(p); };
+  $('#rgWrite').onclick = () => {
+    upd();
+    if (!p.drama) return rgWrite(p);
+    const s = drFind(p.drama.sid), i = s ? s.episodes.findIndex(e => e.projId === p.id) : -1;
+    if (i < 0) return toast('La serie di questo episodio non esiste più');
+    if (!confirm('Riscrivere le inquadrature di questo episodio? Fotogrammi e voci già fatti andranno rifatti (i ciak girati restano in Galleria).')) return;
+    drWriteEpisode(s.id, i, true).then(() => { RG.cur = p.id; setRgMode('film'); });
+    setRgMode('serie');
+  };
+  const bk = $('#drBack'); if (bk) bk.onclick = () => drBackToSeries(p.drama.sid);
   const d = $('#rgDel'); if (d) d.onclick = () => {
     if (!confirm('Eliminare questa regia? I ciak girati restano in Galleria.')) return;
     rgSaveAll(rgList().filter(x => x.id !== p.id)); RG.cur = null; renderRegia();
@@ -611,7 +625,7 @@ function renderRegiaList() { const p = rgProj(); const o = $(`#rgProjects option
 $('#rgProjects').onchange = () => { RG.cur = $('#rgProjects').value; renderRegia(); };
 $('#rgNew').onclick = () => { RG.draft = rgNewProj(); RG.cur = '__draft'; renderRegia(); $('#rgN').focus(); };
 let rgRefT = 0;
-function regiaRefresh() { clearTimeout(rgRefT); rgRefT = setTimeout(() => { if ($('#view-regista').classList.contains('active') && !document.querySelector('#rgBody :focus')) renderRegia(); }, 400); }
+function regiaRefresh() { clearTimeout(rgRefT); rgRefT = setTimeout(() => { if ($('#view-regista').classList.contains('active') && !document.querySelector('#rgBody :focus') && !(typeof DR !== 'undefined' && DR.mode === 'serie' && DR.busy)) renderRegia(); }, 400); }
 
 /* =================== REGISTA: scrittura con l'AI =================== */
 function castBrief() {
@@ -715,7 +729,7 @@ PART ${i + 1} (${pt.start}-${pt.end} s, ${len} s): ${pt.summary}
 ${prev ? 'Previous part ends with: ' + (prev.summary || '').slice(-200) : 'This is the opening of the film.'}
 ${next ? 'Next part: ' + (next.summary || '').slice(0, 200) : 'This is the ending of the film.'}
 Aspect ratio ${p.ratio}. Make the shot durations add up to about ${len} s.
-DIALOGUE MODE: ${p.dialog === 'no' ? 'no dialogue at all, "lines" always empty' : p.dialog === 'copione' && p.script ? 'use the dialogue of the screenplay for this part (shortened if needed)' : 'only a few short meaningful lines, most shots silent'}.${p.script ? '\nSCREENPLAY EXCERPT for reference:\n' + rgScriptFor(p, i) : ''}${p.bible.rating && p.bible.rating.level !== 'tutti' ? '\nKeep every shot non-explicit and implied (cut away, looks, aftermath), acceptable for mainstream video models.' : ''}${fixNotes ? '\nFIX THESE PROBLEMS from the previous version: ' + fixNotes : ''}`;
+DIALOGUE MODE: ${p.dialog === 'no' ? 'no dialogue at all, "lines" always empty' : p.dialog === 'copione' && p.script ? 'use the dialogue of the screenplay for this part (shortened if needed)' : p.dialog === 'drama' ? 'micro-drama: short loaded lines in about half of the shots' : 'only a few short meaningful lines, most shots silent'}.${p.drama ? dramaShotRules(p, i) : ''}${p.script ? '\nSCREENPLAY EXCERPT for reference:\n' + rgScriptFor(p, i) : ''}${p.bible.rating && p.bible.rating.level !== 'tutti' ? '\nKeep every shot non-explicit and implied (cut away, looks, aftermath), acceptable for mainstream video models.' : ''}${fixNotes ? '\nFIX THESE PROBLEMS from the previous version: ' + fixNotes : ''}`;
   const r = await llmJSON(shotsSystem(p.engine), usr, 3500);
   let shots = (r.shots || []).map(s => ({ id: uid(), dur: +s.dur || 5, chars: (s.chars || []).filter(Boolean), location: s.location || '', framing: s.framing || '', camera: s.camera || '', action: s.action || '', frame: s.frame || '', motion: s.motion || '', prompt: s.prompt || '', gaze: normPairs(s.gaze, 'at'), place: normPairs(s.place, 'where'), negative: s.negative || '', lines: p.dialog === 'no' ? [] : (s.lines || []).filter(l => l && l.text).slice(0, 2).map(l => ({ char: l.char || (s.chars || [])[0] || '', text: String(l.text).trim(), emotion: l.emotion || 'neutral', oncam: l.oncam !== false })) }));
   if (!shots.length) throw new Error('nessuna inquadratura');
@@ -1060,15 +1074,16 @@ function rgToMontage(p) {
   const cur = proj();
   if ((cur.items.length || cur.audio.length || cur.texts.length) && !confirm('Sostituire il film che hai ora nel montaggio? (I film già montati restano.)')) return;
   edStop(); MT.proj = edDefault(); MT.proj.title = p.bible.title || ''; MT.proj.clipAudio = !!p.audio;
-  MT.proj.items.push({ id: nid(), kind: 'card', text: p.bible.title || 'Film', dur: 3, trans: { type: 'cut', dur: 0.6 } });
+  const card = !p.drama; // negli episodi drama si parte subito dal gancio, senza cartello
+  if (card) MT.proj.items.push({ id: nid(), kind: 'card', text: p.bible.title || 'Film', dur: 3, trans: { type: 'cut', dur: 0.6 } });
   clips.forEach(c => edAddVideo(c.id));
-  MT.proj.items.forEach((it, i) => { if (i > 1) it.trans = { type: 'cut', dur: 0.6 }; else if (i === 1) it.trans = { type: 'fade', dur: 0.8 }; });
+  MT.proj.items.forEach((it, i) => { if (i > 1 || !card) it.trans = { type: 'cut', dur: 0.6 }; else if (i === 1) it.trans = { type: 'fade', dur: 0.8 }; });
   // battute sulla traccia voce, a tempo con il loro ciak (diventano anche i sottotitoli)
   const { L } = layout(); let nv = 0;
   pairs.forEach((pr, k) => {
     const v = pr.sh.voice, line = (pr.sh.lines || [])[0]; if (!v || !line) return;
     const talk = pr.clip.settings.engine === 'talk';
-    const start = L[k + 1].start + (talk ? 0 : 0.4);
+    const start = L[k + (card ? 1 : 0)].start + (talk ? 0 : 0.4);
     MT.proj.audio.push({ id: nid(), lane: 'voice', src: v.key ? { key: v.key } : String(v.url).startsWith('data:') ? { b64: v.url } : { url: v.url }, name: `${line.char}: ${line.text}`.slice(0, 60), start: +start.toFixed(2), in: 0, dur: v.dur, srcDur: v.dur, vol: 1, fin: 0, fout: 0, loop: false, sub: line.text, who: line.char });
     nv++;
   });

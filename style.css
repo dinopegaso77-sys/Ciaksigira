@@ -747,3 +747,25 @@ label.btn{display:inline-flex;align-items:center;gap:6px;margin:0;font-family:"I
 .cp-go .btn.big{flex:1 1 220px}
 #csLook{display:block;width:100%;box-sizing:border-box;min-height:220px;font-family:system-ui,-apple-system,"Segoe UI",sans-serif!important;font-style:normal!important;font-weight:400!important;margin:6px 0 4px;background:#0d0d0d;color:var(--text);border:1px solid var(--line2);border-radius:10px;padding:10px 12px;font:inherit;font-size:15px;line-height:1.5;resize:vertical}
 #csLook::placeholder{color:var(--muted);font-style:normal}
+
+/* ================= SERIE DRAMA (2.8) ================= */
+.rg-mode{max-width:420px}
+.dr-tropes{display:flex;flex-direction:column;gap:6px;margin:8px 0 12px}
+.dr-tropes .chip.on,.rg-card .chip.on{background:var(--text);color:#0a0a0a;border-color:var(--text)}
+.dr-ep{border:1px solid var(--line2);border-radius:12px;padding:12px;margin:0 0 10px;background:#121212}
+.dr-ep.paid{background:#151310}
+.dr-eph{display:flex;flex-wrap:wrap;align-items:center;gap:6px 8px;margin-bottom:6px}
+.dr-eph b{font-size:1.02rem;flex:1 1 160px;min-width:0}
+.dr-n{font-family:var(--f-label);letter-spacing:.08em;background:var(--text);color:#0a0a0a;border-radius:6px;padding:2px 8px;font-size:1rem}
+.dr-tag{font-size:.74rem;border-radius:20px;padding:2px 8px;border:1px solid var(--line2);white-space:nowrap}
+.dr-tag.t-free{color:#7fd88b;border-color:#2f6b39}
+.dr-tag.t-lock{color:#e8c25a;border-color:#6b5a2a}
+.dr-tag.t-wall{color:#ff9d6b;border-color:#7a3d20}
+.dr-hook,.dr-cliff{margin:4px 0;font-size:.92rem}
+.dr-hook i,.dr-cliff i{font-style:normal;font-family:var(--f-label);letter-spacing:.06em;font-size:.8rem;margin-right:6px;padding:1px 6px;border-radius:4px;background:#262626;color:var(--muted)}
+.dr-cliff i{background:#3a2418;color:#ffb38a}
+.dr-epf{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-top:10px}
+.dr-st{font-size:.8rem;color:var(--muted);margin-right:auto}
+.dr-st.ok{color:#7fd88b}.dr-st.wip{color:#e8c25a}.dr-st.err{color:#ff8a7a}
+.dr-banner{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px;background:#1d1a12;border:1px solid #6b5a2a;border-radius:12px;padding:10px 12px;margin-bottom:14px}
+.rg-idea.is-ep .rg-who,.rg-idea.is-ep .rg-whonote,.rg-idea.is-ep .rg-script,.rg-idea.is-ep label.nolabel{display:none}

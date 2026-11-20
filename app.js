@@ -1,6 +1,6 @@
 /* Ciak si gira — generatore di clip video via RunPod Public Endpoints */
 'use strict';
-const APP_VERSION = '2.8'; // deve coincidere con ?v= in index.html
+const APP_VERSION = '2.8.1'; // deve coincidere con ?v= in index.html
 
 const API = 'https://api.runpod.ai/v2';
 const $ = s => document.querySelector(s);
@@ -431,7 +431,12 @@ function removeJob(id) { S.jobs = S.jobs.filter(j => j.id !== id); saveJobs(); r
 
 /* limiti di attesa: un ciak che non parte (o non finisce) viene annullato invece di restare appeso per ore */
 const QUEUE_MAX = 20 * 60e3;
-const runMax = job => (['sorapro'].includes(job.settings.engine) || (job.settings.engine === 'seedance' && job.settings.res === '1080p') ? 45 : 30) * 60e3;
+/* InfiniteTalk lavora in proporzione alla durata dell'audio: una canzone da 1 minuto può richiedere 40–50 minuti */
+const runMax = job => {
+  const s = job.settings;
+  if (s.engine === 'talk') return Math.min(90, Math.max(30, 20 + (+s.duration || 0) * 0.5)) * 60e3;
+  return (['sorapro'].includes(s.engine) || (s.engine === 'seedance' && s.res === '1080p') ? 45 : 30) * 60e3;
+};
 async function stuckCheck(job) {
   const now = Date.now();
   if (job.status === 'IN_QUEUE' && now - job.created > QUEUE_MAX) return `Rimasto ${Math.round((now - job.created) / 60e3)} min in coda su ${MODELS[job.settings.engine]?.name || 'RunPod'} senza partire`;

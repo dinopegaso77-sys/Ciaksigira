@@ -1,6 +1,6 @@
 /* Ciak si gira — generatore di clip video via RunPod Public Endpoints */
 'use strict';
-const APP_VERSION = '2.8.1'; // deve coincidere con ?v= in index.html
+const APP_VERSION = '2.8.2'; // deve coincidere con ?v= in index.html
 
 const API = 'https://api.runpod.ai/v2';
 const $ = s => document.querySelector(s);
@@ -150,8 +150,8 @@ async function rp(path, opts = {}) {
     const ep = (path.split('/')[1] || '').slice(0, 40);
     if (r.status === 401) throw new Error('Chiave RunPod non valida');
     if (r.status === 403) throw new Error(`RunPod ha rifiutato l'accesso a "${ep}" (403)${j.error ? ': ' + j.error : ''}. Se la chiave ha permessi limitati, dalle accesso in lettura e scrittura a tutti gli endpoint`);
-    if (r.status === 404) throw new Error(`Servizio "${ep}" non trovato su RunPod (404)`);
-    throw new Error(j.error || j.message || ('Errore RunPod ' + r.status));
+    if (r.status === 404) throw Object.assign(new Error(path.includes('/status/') ? `RunPod non trova più questo lavoro (404)` : `Servizio "${ep}" non trovato su RunPod (404)`), { http: 404 });
+    throw Object.assign(new Error(j.error || j.message || ('Errore RunPod ' + r.status)), { http: r.status });
   }
   return j;
 }
@@ -398,7 +398,18 @@ function jobsHtml() {
         : `<button class="btn small" data-cancel="${j.id}">Annulla</button>`}</div></div>`;
   }).join('');
 }
+/* finché c'è un ciak in ripresa e l'app è in primo piano, lo schermo resta acceso (il telefono non va a dormire) */
+let wakeLock = null;
+async function updateWakeLock() {
+  const active = S.jobs.some(j => !j.done && !BAD.includes(j.status));
+  try {
+    if (active && !wakeLock && document.visibilityState === 'visible' && navigator.wakeLock) { wakeLock = await navigator.wakeLock.request('screen'); wakeLock.addEventListener('release', () => { wakeLock = null; }); }
+    else if (!active && wakeLock) { await wakeLock.release(); wakeLock = null; }
+  } catch (e) { wakeLock = null; }
+}
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') updateWakeLock(); });
 function renderJobs() {
+  updateWakeLock();
   const html = jobsHtml();
   ['#jobs', '#jobsSheet'].forEach(sel => {
     const box = $(sel); box.innerHTML = html;
@@ -452,6 +463,7 @@ async function poll(job) {
     if (job.done || !S.jobs.includes(job)) return;
     try {
       const r = await rp(`/${job.endpoint}/status/${job.jobId}`);
+      job.errN = 0;
       job.status = r.status || job.status;
       const stuck = !['COMPLETED', ...BAD].includes(job.status) && await stuckCheck(job);
       if (stuck) {
@@ -482,6 +494,20 @@ async function poll(job) {
       saveJobs(); renderJobs();
     } catch (e) {
       if (e.fatal || e.message.includes('Chiave')) { job.done = true; job.status = 'FAILED'; job.error = e.message; saveJobs(); renderJobs(); return; }
+      /* RunPod tiene il risultato solo per poco dopo la fine: se nel frattempo l'app era chiusa, il lavoro "non esiste più".
+         Prima l'app ritentava per sempre mostrando "Si gira"; ora si ferma e spiega. */
+      job.errN = (job.errN || 0) + 1;
+      const lost = e.http === 404 && job.errN >= 3;
+      const dead = job.errN >= 20 && Date.now() - job.created > QUEUE_MAX + runMax(job);
+      if (lost || dead) {
+        job.done = true; job.status = 'FAILED';
+        job.error = lost
+          ? 'RunPod non ha più questo ciak. Di solito succede quando finisce mentre l\'app è chiusa o il telefono dorme: RunPod tiene il risultato solo per circa 30 minuti dopo la fine. Se era finito è stato addebitato, ma il video non si può più scaricare. Per i ciak lunghi tieni l\'app aperta con lo schermo acceso finché arriva.'
+          : 'RunPod non risponde più su questo ciak da molto tempo: lo fermo. Riprova.';
+        saveJobs(); renderJobs(); if (window.regiaRefresh) regiaRefresh();
+        toast(`Ciak ${job.take}: ${lost ? 'RunPod non lo ha più' : 'nessuna risposta'}`, 7000);
+        return;
+      }
     }
   }
 }
